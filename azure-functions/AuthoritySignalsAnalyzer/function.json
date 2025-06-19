@@ -1,0 +1,28 @@
+{
+  "bindings": [
+    {
+      "authLevel": "function",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": [
+        "post"
+      ],
+      "route": "analyze-authority"
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "res"
+    },
+    {
+      "type": "cosmosDB",
+      "direction": "out",
+      "name": "authorityAnalysisDocument",
+      "databaseName": "%AZURE_COSMOS_DATABASE%",
+      "collectionName": "%COSMOS_DB_CONTAINER_AUTHORITY%",
+      "createIfNotExists": true,
+      "connectionStringSetting": "CosmosDbConnectionString"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"version":3,"file":"azure-ai-service.mock.js","sourceRoot":"","sources":["../../../../../src/components/top-layer/services/__mocks__/azure-ai-service.mock.ts"],"names":[],"mappings":";;;AAAa,QAAA,kBAAkB,GAAG;IAChC,kBAAkB,EAAE,IAAI,CAAC,EAAE,EAAE;IAC7B,MAAM,EAAE,IAAI,CAAC,EAAE,EAAE;IACjB,kBAAkB,EAAE,IAAI,CAAC,EAAE,EAAE;IAC7B,WAAW,EAAE,IAAI,CAAC,EAAE,EAAE;CACvB,CAAC"}

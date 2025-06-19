@@ -1,0 +1,50 @@
+{
+  "name": "freshness-aggregator-function",
+  "version": "1.0.0",
+  "description": "Azure Function for content freshness aggregation using QDF algorithm",
+  "main": "dist/src/functions/freshness-aggregator.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "clean": "rimraf dist",
+    "deploy": "npm run build && func azure functionapp publish freshness-aggregator-func"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.0.0",
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.0.1",
+    "@azure/keyvault-secrets": "^4.7.0",
+    "applicationinsights": "^2.9.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "@types/node": "^18.x",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.45.0",
+    "jest": "^29.6.2",
+    "rimraf": "^5.0.1",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "azure-functions",
+    "serverless",
+    "cosmos-db",
+    "caching",
+    "qdf-algorithm",
+    "content-ranking"
+  ],
+  "author": "Content Architect Team",
+  "license": "MIT"
+}

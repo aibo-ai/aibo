@@ -1,0 +1,297 @@
+import { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { Logger } from '@nestjs/common';
+import { EnhancedBaseApiClient, RateLimitConfig } from './enhanced-base-client';
+import { ContentType, WebSearchResult } from '../models/content-models';
+import { v4 as uuidv4 } from 'uuid';
+import { RetryOptions } from '../../../../common/utils/retry-utils';
+
+/**
+ * Exa API response interfaces
+ */
+interface ExaSearchResponse {
+  results: ExaSearchResult[];
+  continuation_token?: string;
+  nextCursor?: string;
+  count: number;
+  request_id: string;
+}
+
+interface ExaSearchResult {
+  id: string;
+  url: string;
+  title: string;
+  text: string;
+  published_date?: string;
+  author?: string;
+  domain: string;
+  score?: number;
+  highlights?: {
+    text?: Array<{
+      pre: string;
+      match: string;
+      post: string;
+    }>;
+  };
+  image_url?: string;
+  favicon_url?: string;
+  language?: string;
+  document_type?: string;
+}
+
+/**
+ * Exa API client for fetching web search results with semantic search capabilities
+ * 
+ * Rate limits:
+ * - Free tier: 1,000 requests/month
+ * - Pro tier: 10,000 requests/month
+ * - Team tier: 100,000 requests/month
+ */
+
+export class ExaApiClient extends EnhancedBaseApiClient {
+  private readonly RATE_LIMIT: RateLimitConfig = {
+    maxRequests: 1000, // Default to free tier
+    perMilliseconds: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+    maxRetries: 3,
+  };
+
+  private readonly RETRY_OPTIONS: RetryOptions = {
+    maxRetries: 3,
+    initialDelayMs: 1000,
+    maxDelayMs: 10000,
+    factor: 2,
+    jitter: true,
+  };
+
+  constructor(apiKey: string) {
+    // Pass configuration to parent constructor
+    super(
+      'https://api.exa.ai',
+      apiKey,
+      'ExaApiClient',
+      {
+        maxRequests: 1000,
+        perMilliseconds: 30 * 24 * 60 * 60 * 1000, // 30 days
+        maxRetries: 3,
+      },
+      {
+        failureThreshold: 3,
+        resetTimeout: 30000, // 30 seconds
+        successThreshold: 2,
+        timeout: 10000, // 10 seconds
+      }
+    );
+
+    if (!apiKey) {
+      throw new Error('Exa API key is required');
+    }
+
+    // Set additional headers
+    this.axios.defaults.headers.common['x-api-key'] = apiKey;
+    this.axios.defaults.headers.common['Content-Type'] = 'application/json';
+    this.axios.defaults.headers.common['Accept'] = 'application/json';
+  }
+
+  /**
+   * Check if the client is properly configured
+   */
+  /**
+   * Check if the client is properly configured
+   */
+  isConfigured(): boolean {
+    return !!this.axios.defaults.headers.common['x-api-key'];
+  }
+
+  /**
+   * Make a request to the Exa API with retry and rate limiting
+   */
+  protected async makeRequest<T>(
+    config: AxiosRequestConfig,
+    retryOptions?: RetryOptions
+  ): Promise<T> {
+    const requestId = uuidv4();
+    
+    try {
+      this.logger.debug(`[${requestId}] Making request to ${config.url}`, {
+        method: config.method,
+        params: config.params,
+      });
+
+      // Add request ID to headers
+      const requestConfig: AxiosRequestConfig = {
+        ...config,
+        headers: {
+          ...config.headers,
+          'x-request-id': requestId,
+        },
+      };
+
+      const response = await this.executeWithCircuitBreaker<T>(requestConfig);
+      return response.data;
+    } catch (error) {
+      this.logError(error, requestId);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute request with circuit breaker pattern
+   */
+  private async executeWithCircuitBreaker<T>(
+    config: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    try {
+      return await this.axios.request<T>(config);
+    } catch (error) {
+      if (error.response?.status === 429) {
+        throw new Error('Exa API rate limit exceeded. Please try again later.');
+      } else if (error.response?.status === 401) {
+        throw new Error('Invalid Exa API key. Please check your API key and try again.');
+      } else if (error.response?.status === 400) {
+        throw new Error(`Invalid request: ${error.response.data?.error || 'Unknown error'}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Log error with request context
+   */
+  private logError(error: any, requestId: string): void {
+    this.logger.error(`[${requestId}] Request failed: ${error.message}`, {
+      error: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url,
+      method: error.config?.method,
+    });
+  }
+
+
+
+  /**
+   * Map Exa search results to WebSearchResult format
+   */
+  private mapResults(results: ExaSearchResult[]): WebSearchResult[] {
+    return results.map((result, index) => {
+      // Create snippet from text or highlights
+      let snippet = result.text || '';
+      if (result.highlights?.text?.length) {
+        const highlight = result.highlights.text[0];
+        snippet = `${highlight.pre}${highlight.match}${highlight.post}`.trim();
+      }
+      
+      // Truncate snippet if too long
+      const truncatedSnippet = snippet.length > 300 
+        ? `${snippet.substring(0, 300)}...` 
+        : snippet;
+      
+      return {
+        id: result.id || uuidv4(),
+        title: result.title || 'Untitled',
+        url: result.url,
+        source: result.domain,
+        publishedAt: result.published_date || new Date().toISOString(),
+        retrievedAt: new Date().toISOString(),
+        contentType: ContentType.SERP,
+        snippet: truncatedSnippet,
+        author: result.author || 'Unknown',
+        imageUrl: result.image_url,
+        rank: index + 1,
+        domain: result.domain,
+        metadata: {
+          highlights: result.highlights,
+          score: result.score,
+          language: result.language,
+          documentType: result.document_type,
+          faviconUrl: result.favicon_url,
+        },
+      };
+    });
+  }
+
+  /**
+   * Search for content using Exa API
+   * @param query Search query
+   * @param options Search options
+   */
+  async search(
+    query: string,
+    options: {
+      numResults?: number;
+      startCursor?: string;
+      includeDomains?: string[];
+      excludeDomains?: string[];
+      daysAgo?: number;
+      language?: string;
+      startPublishedDate?: string;
+    } = {}
+  ): Promise<WebSearchResult[]> {
+    try {
+      const params: Record<string, any> = {
+        query,
+        numResults: options.numResults || 10,
+        startCursor: options.startCursor,
+        language: options.language,
+      };
+
+      // Add optional arrays only if they have values
+      if (options.includeDomains?.length) {
+        params.includeDomains = options.includeDomains.join(',');
+      }
+      
+      if (options.excludeDomains?.length) {
+        params.excludeDomains = options.excludeDomains.join(',');
+      }
+
+      // Add date filter if daysAgo is provided
+      if (options.daysAgo) {
+        const date = new Date();
+        date.setDate(date.getDate() - options.daysAgo);
+        params.startPublishedDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      }
+
+      return await this.search(query, {
+        numResults: options.numResults,
+        startCursor: options.startCursor,
+        includeDomains: options.includeDomains,
+        excludeDomains: options.excludeDomains,
+        startPublishedDate,
+        language: options.language,
+        type: 'neural' // Use neural search for better semantic matching
+      });
+    } catch (error) {
+      this.handleError(error, 'searchRecent');
+    }
+  }
+
+  /**
+   * Map Exa API results to our WebSearchResult model
+   * @param results Exa API search results
+   * @returns Mapped web search results
+   */
+  private mapResults(results: ExaSearchResult[]): WebSearchResult[] {
+    const now = new Date();
+    
+    return results.map((result, index) => {
+      // Parse published date if available, otherwise use current date
+      let publishedAt = now;
+      if (result.published_date) {
+        try {
+          publishedAt = new Date(result.published_date);
+        } catch (e) {
+          this.logger.warn(`Failed to parse date: ${result.published_date}`);
+        }
+      }
+
+      return {
+        id: `exa_${Date.now()}_${Math.random()}`,
+        title: result.title,
+        description: result.text || undefined,
+        content: result.text || undefined,
+        url: result.url,
+        source: this.extractDomain(result.url),
+        publishedDate: publishedAt.toISOString(),
+        relevanceScore: result.score || 0.5
+      };
+    });
+  }
+}

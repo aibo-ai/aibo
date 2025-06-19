@@ -1,0 +1,18 @@
+{
+  "name": "query-intent-analyzer",
+  "version": "1.0.0",
+  "description": "Azure Function to analyze search query intent using Azure Text Analytics and Azure OpenAI",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests specified\""
+  },
+  "dependencies": {
+    "@azure/ai-text-analytics": "^5.1.0",
+    "@azure/openai": "^1.0.0-beta.7",
+    "axios": "^1.4.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@azure/functions": "^3.5.1"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "technical-seo-validator",
+  "version": "2.0.0",
+  "description": "Technical SEO Validator Azure Function with Lighthouse integration",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "docker:build": "docker build -t technical-seo-validator .",
+    "docker:run": "docker run -p 7071:80 technical-seo-validator"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "@azure/app-configuration": "^1.4.1",
+    "@azure/keyvault-secrets": "^4.7.0",
+    "@azure/identity": "^3.4.0",
+    "lighthouse": "^11.4.0",
+    "chrome-launcher": "^1.0.0",
+    "puppeteer": "^21.6.1",
+    "axe-core": "^4.8.3",
+    "axe-puppeteer": "^1.1.0",
+    "unified": "^11.0.4",
+    "rehype-parse": "^9.0.0",
+    "unist-util-visit": "^5.0.0",
+    "uuid": "^9.0.1",
+    "cheerio": "^1.0.0-rc.12",
+    "node-html-parser": "^6.1.12",
+    "validator": "^13.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/uuid": "^9.0.7",
+    "@types/validator": "^13.11.7",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.8",
+    "ts-jest": "^29.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

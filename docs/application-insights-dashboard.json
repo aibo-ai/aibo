@@ -1,0 +1,144 @@
+{
+  "name": "Content Architect Monitoring Dashboard",
+  "version": "1.0",
+  "dashboardSections": [
+    {
+      "title": "Azure OpenAI Service Monitoring",
+      "widgets": [
+        {
+          "title": "OpenAI API Latency",
+          "type": "metrics",
+          "metrics": [
+            "AzureOpenAI:CompletionLatency",
+            "AzureOpenAI:EmbeddingLatency"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "OpenAI API Success Rate",
+          "type": "metrics",
+          "metrics": [
+            "AzureOpenAI:Completion:Success",
+            "AzureOpenAI:Completion:Failure",
+            "AzureOpenAI:Embedding:Success",
+            "AzureOpenAI:Embedding:Failure"
+          ],
+          "aggregation": "count",
+          "timeRange": "1h"
+        }
+      ]
+    },
+    {
+      "title": "Azure Cognitive Search Monitoring",
+      "widgets": [
+        {
+          "title": "Search API Latency",
+          "type": "metrics",
+          "metrics": [
+            "AzureSearch:QueryLatency"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Search Success Rate",
+          "type": "metrics",
+          "metrics": [
+            "AzureSearch:Query:Success",
+            "AzureSearch:Query:Failure" 
+          ],
+          "aggregation": "count",
+          "timeRange": "1h"
+        }
+      ]
+    },
+    {
+      "title": "Azure Cosmos DB Monitoring",
+      "widgets": [
+        {
+          "title": "Cosmos DB Operations Latency",
+          "type": "metrics",
+          "metrics": [
+            "AzureCosmos:SaveContentLatency",
+            "AzureCosmos:GetContentLatency",
+            "AzureCosmos:QueryContentLatency"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Cosmos DB Success Rate",
+          "type": "metrics",
+          "metrics": [
+            "AzureCosmos:SaveContent:Success",
+            "AzureCosmos:SaveContent:Failure",
+            "AzureCosmos:GetContent:Success", 
+            "AzureCosmos:GetContent:Failure",
+            "AzureCosmos:QueryContent:Success",
+            "AzureCosmos:QueryContent:Failure"
+          ],
+          "aggregation": "count",
+          "timeRange": "1h"
+        }
+      ]
+    },
+    {
+      "title": "Azure Storage & Redis Monitoring",
+      "widgets": [
+        {
+          "title": "Storage Operations Latency",
+          "type": "metrics",
+          "metrics": [
+            "AzureStorage:SaveFileLatency"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Redis Cache Operations Latency",
+          "type": "metrics",
+          "metrics": [
+            "AzureRedis:SetCacheLatency",
+            "AzureRedis:GetCacheLatency"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Redis Cache Hit Rate",
+          "type": "metrics",
+          "metrics": [
+            "AzureRedis:GetCache:Success"
+          ],
+          "aggregation": "count",
+          "dimensions": ["hit"],
+          "timeRange": "1h"
+        }
+      ]
+    },
+    {
+      "title": "Application Exceptions & Errors",
+      "widgets": [
+        {
+          "title": "Exceptions by Operation",
+          "type": "exceptions",
+          "groupBy": ["operation"],
+          "timeRange": "1d"
+        },
+        {
+          "title": "Exception Timeline",
+          "type": "exceptions",
+          "timeRange": "1d"
+        }
+      ]
+    }
+  ],
+  "instructions": "To use this dashboard configuration:
+  1. Navigate to your Application Insights resource in Azure Portal
+  2. Click on 'Dashboard' in the left sidebar
+  3. Click 'New Dashboard' > 'Import from file'
+  4. Upload this JSON file with slight modifications to match your exact metric names
+  
+  Note: You may need to adjust the metric names based on the exact structure of your Application Insights telemetry."
+}

@@ -1,0 +1,1549 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { CosmosClient, Database, Container } from '@azure/cosmos';
+import { AzureAIService } from '../../../shared/services/azure-ai.service';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * User input for query intent analysis
+ */
+export interface UserInput {
+  topic: string;
+  context?: string;
+  keywords?: string[];
+  industry?: string;
+  audience?: string;
+  goals?: string;
+}
+
+/**
+ * Business segment type
+ */
+export type Segment = 'b2b' | 'b2c';
+
+/**
+ * Represents a query intent analysis result
+ */
+export interface QueryIntent {
+  id?: string;
+  topic: string;
+  segment?: Segment;
+  primaryIntent: string;
+  secondaryIntents?: string[];
+  keyThemes: string[];
+  keywordClusters?: string[];
+  conversationalQueries?: string[];
+  queryTypeDistribution: { [key: string]: number };
+  confidence?: number;
+  suggestedApproach?: string;
+  searchParameters?: SearchParameters;
+  timestamp: string;
+}
+
+/**
+ * Represents a content strategy recommendation
+ */
+export interface ContentStrategy {
+  id?: string;
+  contentType: string;
+  segment?: Segment;
+  structure: string[];
+  tonalityGuide: string;
+  contentElements: string[];
+  citationStrategy?: string;
+  suggestedLLMOptimizations?: string[];
+  timestamp: string;
+}
+
+/**
+ * Parameters for search optimization and content discovery
+ */
+export interface SearchParameters {
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  contentTypes: string[];
+  timeframe?: string;
+  filters?: {
+    recency?: string;
+    contentTypes?: string[];
+    minLength?: string;
+    [key: string]: any;
+  };
+  semanticBoost?: boolean;
+  [key: string]: any;
+}
+
+/**
+ * Template for structured content strategies
+ */
+interface StrategyTemplate {
+  contentType: string;
+  structure: string[];
+  tonalityGuide: string;
+  contentElements: string[];
+  citationStrategy: string;
+}
+
+@Injectable()
+export class QueryIntentAnalyzerService implements OnModuleInit {
+  private readonly logger = new Logger(QueryIntentAnalyzerService.name);
+  private cosmosClient: CosmosClient;
+  private database: Database;
+  private container: Container;
+  private strategyContainer: Container;
+  
+  private readonly databaseId = 'content-architect';
+  private readonly containerId = 'query-intents';
+  private readonly strategyContainerId = 'content-strategies';
+
+  constructor(
+    private configService: ConfigService,
+    private azureAIService: AzureAIService
+  ) {
+    // Initialize Cosmos DB client
+    const cosmosKey = this.configService.get<string>('AZURE_COSMOS_KEY');
+    const cosmosEndpoint = this.configService.get<string>('AZURE_COSMOS_ENDPOINT');
+    
+    if (!cosmosKey || !cosmosEndpoint) {
+      this.logger.error('Missing Cosmos DB configuration. AZURE_COSMOS_KEY and AZURE_COSMOS_ENDPOINT must be provided.');
+      throw new Error('Missing required Cosmos DB configuration');
+    }
+    
+    this.cosmosClient = new CosmosClient({ 
+      endpoint: cosmosEndpoint,
+      key: cosmosKey 
+    });
+    this.logger.log('Cosmos DB client initialized');
+  }
+  
+  /**
+   * Lifecycle hook that runs after the module has been initialized
+   * Used to initialize the Cosmos DB resources
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.initializeCosmosResources();
+      this.logger.log('QueryIntentAnalyzerService initialized successfully');
+    } catch (error) {
+      this.logger.error(`Failed to initialize QueryIntentAnalyzerService: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize Cosmos DB resources (database and containers)
+   * @returns Promise that resolves when initialization is complete
+   */
+  private async initializeCosmosResources(): Promise<void> {
+    try {
+      this.logger.log('Initializing Cosmos DB resources...');
+      
+      // Create database if it doesn't exist
+      const { database } = await this.cosmosClient.databases.createIfNotExists({
+        id: this.databaseId
+      });
+      this.database = database;
+      this.logger.log(`Database '${this.databaseId}' initialized`);
+      
+      // Create query intents container if it doesn't exist
+      const { container } = await this.database.containers.createIfNotExists({
+        id: this.containerId,
+        partitionKey: { paths: ["/topic"] }
+      });
+      this.container = container;
+      this.logger.log(`Container '${this.containerId}' initialized`);
+      
+      // Create content strategy container if it doesn't exist
+      const { container: strategyContainer } = await this.database.containers.createIfNotExists({
+        id: this.strategyContainerId,
+        partitionKey: { paths: ["/contentType"] }
+      });
+      this.strategyContainer = strategyContainer;
+      this.logger.log(`Container '${this.strategyContainerId}' initialized`);
+    } catch (error) {
+      this.logger.error(`Failed to initialize Cosmos DB resources: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Initialize Cosmos DB resources after service initialization
+   */
+  /**
+   * Lifecycle hook that runs after the module has been initialized
+   * Used to initialize the Cosmos DB resources
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.initializeCosmosResources();
+      this.logger.log('QueryIntentAnalyzerService initialized successfully');
+    } catch (error) {
+      this.logger.error(`Failed to initialize QueryIntentAnalyzerService: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize Cosmos DB resources (database and containers)
+   * @returns Promise that resolves when initialization is complete
+   */
+  private async initializeCosmosResources(): Promise<void> {
+    try {
+      this.logger.log('Initializing Cosmos DB resources...');
+      
+      // Create database if it doesn't exist
+      const { database } = await this.cosmosClient.databases.createIfNotExists({
+        id: this.databaseId
+      });
+      this.database = database;
+      this.logger.log(`Database '${this.databaseId}' initialized`);
+      
+      // Create query intents container if it doesn't exist
+      const { container } = await this.database.containers.createIfNotExists({
+        id: this.containerId,
+        partitionKey: { paths: ["/topic"] }
+      });
+      this.container = container;
+      this.logger.log(`Container '${this.containerId}' initialized`);
+      
+      // Create content strategy container if it doesn't exist
+      const { container: strategyContainer } = await this.database.containers.createIfNotExists({
+        id: this.strategyContainerId,
+        partitionKey: { paths: ["/contentType"] }
+      });
+      this.strategyContainer = strategyContainer;
+      this.logger.log(`Container '${this.strategyContainerId}' initialized`);
+    } catch (error) {
+      this.logger.error(`Failed to initialize Cosmos DB resources: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze intent from user input with detailed information
+   * @param userInput User input with topic and optional context
+   */
+  async analyzeIntent(userInput: UserInput): Promise<QueryIntent>;
+  
+  /**
+   * Analyze intent from a simple topic string
+   * @param topic Content topic as string
+   */
+  async analyzeIntent(topic: string): Promise<QueryIntent>;
+  
+  /**
+   * Analyze intent with audience segment context
+   * @param userInput User input information
+   * @param segment B2B or B2C segment
+   */
+  async analyzeIntent(userInput: UserInput, segment: Segment): Promise<QueryIntent>;
+  
+  /**
+   * Implementation of the overloaded analyzeIntent method
+   * Routes to appropriate helper method based on input type
+   */
+  async analyzeIntent(input: UserInput | string, segment?: Segment): Promise<QueryIntent> {
+    try {
+      // Handle different input types
+      if (typeof input === 'string') {
+        // Simple topic string input
+        return this.analyzeTopicIntent(input);
+      } else if (segment) {
+        // UserInput with segment
+        return this.analyzeSegmentIntent(input, segment);
+      } else {
+        // Standard UserInput
+        return this.analyzeUserInputIntent(input);
+      }
+    } catch (error) {
+      this.logger.error(`Error analyzing intent: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Map content intent to preferred content types
+   * @param intent The primary content intent
+   * @returns Array of content types suited for the intent
+   */
+  private mapIntentToContentType(intent: string): string[] {
+    switch (intent.toLowerCase()) {
+      case 'informational':
+        return ['article', 'blog', 'guide', 'tutorial', 'whitepaper'];
+      case 'transactional':
+        return ['product', 'service', 'landing-page', 'review'];
+      case 'navigational':
+        return ['homepage', 'category-page', 'directory', 'index'];
+      case 'commercial':
+        return ['review', 'comparison', 'case-study', 'testimonial'];
+      default:
+        return ['article', 'blog', 'guide'];
+    }
+  }
+  
+  /**
+   * Store intent analysis in Cosmos DB for later retrieval
+   * @param intentAnalysis The intent analysis result to be stored
+   */
+  private async storeIntentAnalysis(intentAnalysis: QueryIntent): Promise<void> {
+    try {
+      await this.container.items.upsert(intentAnalysis);
+      this.logger.log(`Stored intent analysis for topic: ${intentAnalysis.topic}`);
+    } catch (error) {
+      this.logger.error(`Failed to store intent analysis: ${error.message}`);
+      // Continue execution even if storage fails
+    }
+  }
+
+  /**
+   * Analyze topic intent for a simple topic string
+   * @param topic Content topic to analyze
+   */
+  private async analyzeTopicIntent(topic: string): Promise<QueryIntent> {
+    try {
+      this.logger.log(`Analyzing intent for simple topic: ${topic}`);
+      
+      const messages = [
+        {
+          role: 'system',
+          content: `You are an intent analysis expert. Analyze the provided topic to determine search intent.
+            Return a valid JSON object with the following structure:
+            {
+              "primaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "secondaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "confidence": decimal between 0-1,
+              "queryTypes": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
+              "conversationalQueries": [array of 3-5 related conversational queries],
+              "keyThemes": [array of 3-7 key themes/topics relevant to the topic]
+            }`
+        },
+        {
+          role: 'user',
+          content: `Analyze the intent for this topic: "${topic}"`
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Extract and parse JSON from the response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : this.createDefaultResponse(topic);
+      
+      // Generate additional analysis components
+      const suggestedApproach = await this.getSuggestedApproach(topic, jsonResponse.primaryIntent);
+      const searchParams = await this.generateSearchParameters(topic, jsonResponse.primaryIntent, jsonResponse.keyThemes);
+      
+      // Create the complete intent analysis object
+      const intentAnalysis: QueryIntent = {
+        id: uuidv4(),
+        topic,
+        primaryIntent: jsonResponse.primaryIntent,
+        secondaryIntent: jsonResponse.secondaryIntent,
+        confidence: jsonResponse.confidence || 0.7,
+        suggestedApproach,
+        keyThemes: jsonResponse.keyThemes || [],
+        keywordClusters: this.generateKeywordClusters(topic, jsonResponse.keyThemes || []),
+        conversationalQueries: jsonResponse.conversationalQueries || [],
+        queryTypes: jsonResponse.queryTypes || {
+          informational: 0.7,
+          transactional: 0.1,
+          navigational: 0.1,
+          commercial: 0.1
+        },
+        searchParameters: searchParams,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the intent analysis
+      await this.storeIntentAnalysis(intentAnalysis);
+      
+      return intentAnalysis;
+    } catch (error) {
+      this.logger.error(`Error analyzing topic intent: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze intent based on user input with context
+   * @param userInput User input with topic and optional context
+   */
+  private async analyzeUserInputIntent(userInput: UserInput): Promise<QueryIntent> {
+    try {
+      this.logger.log(`Analyzing intent for topic with context: ${userInput.topic}`);
+      
+      const messages = [
+        {
+          role: 'system',
+          content: `You are an intent analysis expert. Analyze the user's query intent for the provided topic.
+            Determine the primary and secondary intent, confidence level, and provide recommendations.
+            Return your analysis as valid JSON with the following structure:
+            {
+              "primaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "secondaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "confidence": decimal between 0-1,
+              "queryTypes": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
+              "conversationalQueries": [array of 3-5 related conversational queries],
+              "keyThemes": [array of 3-7 key themes/topics relevant to the query]
+            }`
+        },
+        {
+          role: 'user',
+          content: `Analyze the intent for this topic: "${userInput.topic}"
+            ${userInput.industry ? `Industry: ${userInput.industry}` : ''}
+            ${userInput.audience ? `Target Audience: ${userInput.audience}` : ''}
+            ${userInput.goals ? `Goals: ${userInput.goals}` : ''}`
+        }
+      ];
+      
+      // Get completion from Azure AI
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Extract and parse JSON from the response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : this.createDefaultResponse(userInput.topic);
+      
+      // Generate additional analysis components
+      const suggestedApproach = await this.getSuggestedApproach(userInput.topic, jsonResponse.primaryIntent);
+      const searchParams = await this.generateSearchParameters(userInput.topic, jsonResponse.primaryIntent, jsonResponse.keyThemes);
+      
+      // Create the complete intent analysis object
+      const intentAnalysis: QueryIntent = {
+        id: uuidv4(),
+        topic: userInput.topic,
+        primaryIntent: jsonResponse.primaryIntent,
+        secondaryIntent: jsonResponse.secondaryIntent,
+        confidence: jsonResponse.confidence || 0.7,
+        suggestedApproach,
+        keyThemes: jsonResponse.keyThemes || [],
+        keywordClusters: this.generateKeywordClusters(userInput.topic, jsonResponse.keyThemes || []),
+        conversationalQueries: jsonResponse.conversationalQueries || [],
+        queryTypes: jsonResponse.queryTypes || {
+          informational: 0.7,
+          transactional: 0.1,
+          navigational: 0.1,
+          commercial: 0.1
+        },
+        searchParameters: searchParams,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the intent analysis
+      await this.storeIntentAnalysis(intentAnalysis);
+      
+      return intentAnalysis;
+    } catch (error) {
+      this.logger.error(`Error analyzing user input intent: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze intent with segment context (B2B or B2C)
+   * @param userInput User input with topic and context
+   * @param segment Business segment (B2B or B2C)
+   */
+  private async analyzeSegmentIntent(userInput: UserInput, segment: Segment): Promise<QueryIntent> {
+    try {
+      this.logger.log(`Analyzing ${segment} intent for topic: ${userInput.topic}`);
+      
+      const messages = [
+        {
+          role: 'system',
+          content: `You are a specialized ${segment.toUpperCase()} intent analysis expert. Analyze the query intent for the provided topic.
+            Determine the primary and secondary intent specific to ${segment.toUpperCase()} contexts, confidence level, and provide recommendations.
+            Return your analysis as valid JSON with the following structure:
+            {
+              "primaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "secondaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "confidence": decimal between 0-1,
+              "queryTypes": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
+              "conversationalQueries": [array of 3-5 related conversational ${segment.toUpperCase()} queries],
+              "keyThemes": [array of 5-7 key themes relevant to ${segment.toUpperCase()} context]
+            }`
+        },
+        {
+          role: 'user',
+          content: `Analyze the intent for this ${segment.toUpperCase()} topic: "${userInput.topic}"
+            ${userInput.industry ? `Industry: ${userInput.industry}` : ''}
+            ${userInput.audience ? `Target Audience: ${userInput.audience}` : ''}
+            ${userInput.goals ? `Goals: ${userInput.goals}` : ''}`
+        }
+      ];
+      
+      // Get completion from Azure AI
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Extract and parse JSON from the response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : this.createDefaultResponse(userInput.topic, segment);
+      
+      // Generate content strategy based on segment
+      const contentStrategy = await this.generateContentStrategy(userInput.topic, jsonResponse.primaryIntent, segment);
+      const suggestedApproach = contentStrategy.structure.slice(0, 2).join(' ').substring(0, 200);
+      const searchParams = await this.generateSearchParametersForSegment(userInput.topic, jsonResponse.primaryIntent, segment, jsonResponse.keyThemes);
+      
+      // Create the complete intent analysis object
+      const intentAnalysis: QueryIntent = {
+        id: uuidv4(),
+        topic: userInput.topic,
+        primaryIntent: jsonResponse.primaryIntent,
+        secondaryIntent: jsonResponse.secondaryIntent,
+        confidence: jsonResponse.confidence || 0.8,
+        suggestedApproach,
+        keyThemes: jsonResponse.keyThemes || [],
+        keywordClusters: this.generateKeywordClusters(userInput.topic, jsonResponse.keyThemes || [], segment),
+        conversationalQueries: jsonResponse.conversationalQueries || [],
+        queryTypes: jsonResponse.queryTypes || this.getDefaultQueryTypes(segment),
+        searchParameters: searchParams,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the intent analysis
+      await this.storeIntentAnalysis(intentAnalysis);
+      
+      return intentAnalysis;
+    } catch (error) {
+      this.logger.error(`Error analyzing segment intent: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Create default response object when AI parsing fails
+   * @param topic Topic for the default response
+   * @param segment Optional segment for specialized defaults
+   * @returns Default response object with appropriate values
+   */
+  private createDefaultResponse(topic: string, segment?: Segment): any {
+    const defaultResponse = {
+      primaryIntent: 'informational',
+      secondaryIntent: 'commercial',
+      confidence: segment ? 0.8 : 0.7,
+      queryTypes: this.getDefaultQueryTypes(segment),
+      conversationalQueries: [
+        `What is ${topic}?`,
+        `How does ${topic} work?`,
+        `Best practices for ${topic}`,
+        segment === 'b2b' ? `${topic} solutions for enterprises` : `${topic} for beginners`
+      ],
+      keyThemes: [
+        `${topic} overview`,
+        `${topic} best practices`,
+        `${topic} implementation`,
+        segment === 'b2b' ? `Enterprise ${topic} solutions` : `${topic} guide`,
+        segment === 'b2b' ? `${topic} ROI` : `${topic} tutorial`
+      ]
+    };
+    
+    return defaultResponse;
+  }
+  
+  /**
+   * Generate keyword clusters based on topic and themes
+   * @param topic Main topic for keyword clusters
+   * @param themes Key themes from AI analysis
+   * @param segment Optional segment for specialized keywords
+   * @returns Array of keyword clusters
+   */
+  private generateKeywordClusters(topic: string, themes: string[], segment?: Segment): string[] {
+    // Start with basic clusters
+    const baseClusters = [
+      `${topic} overview`,
+      `${topic} guide`,
+      `${topic} tutorial`
+    ];
+    
+    // Add segment-specific clusters if segment is provided
+    if (segment === 'b2b') {
+      baseClusters.push(
+        `enterprise ${topic} solutions`,
+        `${topic} for business`,
+        `${topic} ROI`,
+        `${topic} implementation strategy`
+      );
+    } else if (segment === 'b2c') {
+      baseClusters.push(
+        `${topic} for beginners`,
+        `easy ${topic} guide`,
+        `${topic} tips and tricks`,
+        `affordable ${topic} options`
+      );
+    }
+    
+    // Add theme-based clusters if themes are provided
+    if (themes && themes.length > 0) {
+      // Process themes to create keyword clusters
+      const themeClusters = themes.map(theme => {
+        // If theme doesn't already include the topic, combine them
+        if (!theme.toLowerCase().includes(topic.toLowerCase()) && 
+            !topic.toLowerCase().includes(theme.toLowerCase())) {
+          return `${topic} ${theme}`;
+        }
+        return theme;
+      });
+      
+      // Combine base clusters with theme clusters
+      return [...new Set([...baseClusters, ...themeClusters])];
+    }
+    
+    return baseClusters;
+  }
+  
+  /**
+   * Get default query types based on segment
+   * @param segment Optional B2B or B2C segment
+   * @returns Default query type distribution
+   */
+  private getDefaultQueryTypes(segment?: Segment): { [key: string]: number } {
+    if (segment === 'b2b') {
+      return {
+        informational: 0.6,
+        transactional: 0.2,
+        navigational: 0.1,
+        commercial: 0.1
+      };
+    } else if (segment === 'b2c') {
+      return {
+        informational: 0.4,
+        transactional: 0.3,
+        navigational: 0.1,
+        commercial: 0.2
+      };
+    } else {
+      return {
+        informational: 0.7,
+        transactional: 0.1,
+        navigational: 0.1,
+        commercial: 0.1
+      };
+    }
+  }
+  
+  /**
+   * Generate a suggested content approach based on intent and topic
+   * @param topic The query topic
+   * @param intent The primary intent identified
+   * @returns A suggested content approach
+   */
+  private async getSuggestedApproach(topic: string, intent: string): Promise<string> {
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a content strategy expert. Provide a concise, actionable content approach based on the topic and intent.'
+        },
+        {
+          role: 'user',
+          content: `Generate a content approach suggestion for topic: "${topic}" with primary intent: ${intent}`
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      return responseText.length > 200 ? responseText.substring(0, 197) + '...' : responseText;
+    } catch (error) {
+      this.logger.warn(`Failed to generate suggested approach: ${error.message}`);
+      return `Create comprehensive content about ${topic} focusing on ${intent} aspects.`;
+    }
+  }
+
+  /**
+   * Generate search parameters based on the topic and intent
+   * @param topic The topic of the query
+   * @param intent The primary intent identified
+   * @param keyThemes Key themes identified for the topic
+   * @returns SearchParameters object for content discovery
+   */
+  private async generateSearchParameters(
+    topic: string, 
+    intent: string, 
+    keyThemes: string[] = []
+  ): Promise<SearchParameters> {
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a search optimization expert. Generate concise search parameters that will help discover high-quality, relevant content for the given topic and intent.'
+        },
+        {
+          role: 'user',
+          content: `Generate search parameters for topic: "${topic}" with primary intent: ${intent}. Key themes include: ${keyThemes.join(', ')}` 
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Default search parameters
+      const defaultParams: SearchParameters = {
+        includeDomains: [],
+        excludeDomains: ['pinterest.com', 'quora.com'],
+        contentTypes: this.mapIntentToContentType(intent),
+        timeframe: intent === 'informational' ? 'any' : 'recent',
+        filters: {
+          recency: intent === 'informational' ? 'any' : 'recent',
+          contentTypes: this.mapIntentToContentType(intent),
+          minLength: intent === 'informational' ? '800' : '400'
+        }
+      };
+      
+      // Try to extract domains from the AI response
+      const includeDomainMatch = responseText.match(/include domains?:\s*([\w\s,.-]+)/i);
+      const excludeDomainMatch = responseText.match(/exclude domains?:\s*([\w\s,.-]+)/i);
+      
+      if (includeDomainMatch && includeDomainMatch[1]) {
+        defaultParams.includeDomains = includeDomainMatch[1]
+          .split(',')
+          .map(domain => domain.trim())
+          .filter(domain => domain.length > 0);
+      }
+      
+      if (excludeDomainMatch && excludeDomainMatch[1]) {
+        defaultParams.excludeDomains = excludeDomainMatch[1]
+          .split(',')
+          .map(domain => domain.trim())
+          .filter(domain => domain.length > 0)
+          .concat(defaultParams.excludeDomains || []);
+      }
+      
+      return defaultParams;
+    } catch (error) {
+      this.logger.warn(`Failed to generate search parameters: ${error.message}`);
+      // Return default search parameters on error
+      return {
+        includeDomains: [],
+        excludeDomains: ['pinterest.com', 'quora.com'],
+        contentTypes: this.mapIntentToContentType(intent),
+        timeframe: 'recent',
+        filters: {
+          recency: 'recent',
+          contentTypes: this.mapIntentToContentType(intent),
+          minLength: '600'
+        }
+      };
+    }
+  }
+  
+  /**
+   * Generate search parameters specifically tailored for a business segment
+   * @param topic The query topic
+   * @param intent The primary intent identified
+   * @param segment Business segment (B2B or B2C)
+   * @param keyThemes Key themes for the topic and segment
+   * @returns Search parameters optimized for the segment
+   */
+  private async generateSearchParametersForSegment(
+    topic: string,
+    intent: string,
+    segment: Segment,
+    keyThemes: string[] = []
+  ): Promise<SearchParameters> {
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: `You are a ${segment.toUpperCase()} search optimization expert. Generate search parameters for discovering high-quality ${segment.toUpperCase()} content.`
+        },
+        {
+          role: 'user',
+          content: `Generate ${segment.toUpperCase()} search parameters for topic: "${topic}" with primary intent: ${intent}. Key themes: ${keyThemes.join(', ')}` 
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Base parameters from standard method
+      const baseParams = await this.generateSearchParameters(topic, intent, keyThemes);
+      
+      // Segment-specific customizations
+      if (segment === 'b2b') {
+        baseParams.excludeDomains = [
+          ...baseParams.excludeDomains || [],
+          'medium.com',
+          'buzzfeed.com',
+          'reddit.com'
+        ];
+        baseParams.filters = {
+          ...baseParams.filters,
+          minLength: '1000',
+          recency: 'last 2 years'
+        };
+      } else if (segment === 'b2c') {
+        baseParams.excludeDomains = [
+          ...baseParams.excludeDomains || [],
+          'jstor.org',
+          'ieee.org',
+          'academia.edu'
+        ];
+        baseParams.filters = {
+          ...baseParams.filters,
+          minLength: '400',
+          recency: 'recent'
+        };
+        baseParams.semanticBoost = true;
+      }
+      
+      return baseParams;
+    } catch (error) {
+      this.logger.warn(`Failed to generate segment search parameters: ${error.message}`);
+      const baseParams = await this.generateSearchParameters(topic, intent, keyThemes);
+      return baseParams;
+    }
+  }
+
+  /**
+   * Initialize Cosmos DB resources (database and containers)
+   */
+  private async initializeCosmosResources(): Promise<void> {
+    try {
+      this.logger.log('Initializing Cosmos DB resources...');
+      
+      // Create database if it doesn't exist
+      const { database } = await this.cosmosClient.databases.createIfNotExists({
+        id: this.databaseId
+      });
+      this.database = database;
+      
+      // Create query intents container if it doesn't exist
+      const { container } = await this.database.containers.createIfNotExists({
+        id: this.containerId,
+        partitionKey: { paths: ["/topic"] }
+      });
+      this.container = container;
+      
+      // Create content strategy container if it doesn't exist
+      const { container: strategyContainer } = await this.database.containers.createIfNotExists({
+        id: this.strategyContainerId,
+        partitionKey: { paths: ["/contentType"] }
+      });
+      this.strategyContainer = strategyContainer;
+      
+      this.logger.log('Cosmos DB resources initialized successfully');
+    } catch (error) {
+      this.logger.error(`Failed to initialize Cosmos DB resources: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Analyze the intent of a user query
+   * @param userInput User query input containing topic and optional context
+   * @returns Query intent analysis
+   */
+  async analyzeIntent(userInput: UserInput): Promise<QueryIntent> {
+    try {
+      this.logger.log(`Analyzing intent for topic: ${userInput.topic}`);
+      
+      const messages = [
+        {
+          role: 'system',
+          content: `You are an intent analysis expert. Analyze the user's query intent for the provided topic.
+            Determine the primary and secondary intent, confidence level, and provide recommendations.
+            Return your analysis as valid JSON with the following structure:
+            {
+              "primaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "secondaryIntent": "one of [informational, transactional, navigational, commercial]",
+              "confidence": decimal between 0-1,
+              "queryTypes": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
+              "conversationalQueries": [array of 3-5 related conversational queries],
+              "keyThemes": [array of 3-7 key themes/topics relevant to the query]
+            }`
+        },
+        {
+          role: 'user',
+          content: `Analyze the intent for this topic: "${userInput.topic}"
+            ${userInput.industry ? `Industry: ${userInput.industry}` : ''}
+            ${userInput.audience ? `Target Audience: ${userInput.audience}` : ''}
+            ${userInput.goals ? `Goals: ${userInput.goals}` : ''}`
+        }
+      ];
+      
+      // Get completion from Azure AI
+      const completion = await this.azureAIService.generateCompletion(messages);
+      
+      // Parse JSON response
+      let jsonResponse;
+      try {
+        const responseText = await this.azureAIService.getCompletion(completion);
+        // Extract JSON from the response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        jsonResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      } catch (error) {
+        this.logger.error(`Failed to parse AI response: ${error.message}`);
+        // Fallback with default values if parsing fails
+        jsonResponse = {
+          primaryIntent: 'informational',
+          secondaryIntent: 'commercial',
+          confidence: 0.7,
+          queryTypes: { informational: 0.7, transactional: 0.1, navigational: 0.1, commercial: 0.1 },
+          conversationalQueries: [
+            `Tell me more about ${userInput.topic}`,
+            `What are the best practices for ${userInput.topic}?`,
+            `How does ${userInput.topic} work?`
+          ],
+          keyThemes: [`${userInput.topic} basics`, `${userInput.topic} benefits`, `${userInput.topic} use cases`]
+        };
+      }
+      
+      // Generate additional analysis components
+      const suggestedApproach = await this.getSuggestedApproach(userInput.topic, jsonResponse.primaryIntent);
+      const searchParams = await this.generateSearchParameters(userInput.topic, jsonResponse.primaryIntent, jsonResponse.keyThemes);
+      
+      // Create the complete intent analysis object
+      const intentAnalysis: QueryIntent = {
+        id: uuidv4(),
+        topic: userInput.topic,
+        primaryIntent: jsonResponse.primaryIntent,
+        secondaryIntent: jsonResponse.secondaryIntent,
+        confidence: jsonResponse.confidence,
+        suggestedApproach,
+        keyThemes: jsonResponse.keyThemes || [],
+        keywordClusters: this.generateKeyThemes(userInput.topic, jsonResponse.keyThemes) || [],
+        conversationalQueries: jsonResponse.conversationalQueries || [],
+        queryTypes: jsonResponse.queryTypes || {
+          informational: 0.7,
+          transactional: 0.1,
+          navigational: 0.1,
+          commercial: 0.1
+        },
+        searchParameters: searchParams,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the intent analysis in Cosmos DB
+      await this.storeIntentAnalysis(intentAnalysis);
+      
+      return intentAnalysis;
+    } catch (error) {
+      this.logger.error(`Error analyzing intent: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Generate a suggested content approach based on intent and topic
+   * @param topic The query topic
+   * @param intent The primary intent identified
+   * @returns A suggested content approach
+   */
+  private async getSuggestedApproach(topic: string, intent: string): Promise<string> {
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a content strategy expert. Provide a concise, actionable content approach based on the topic and intent.'
+        },
+        {
+          role: 'user',
+          content: `Generate a content approach suggestion for topic: "${topic}" with primary intent: ${intent}`
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      return responseText.length > 200 ? responseText.substring(0, 197) + '...' : responseText;
+    } catch (error) {
+      this.logger.warn(`Failed to generate suggested approach: ${error.message}`);
+      return `Create comprehensive content about ${topic} focusing on ${intent} aspects.`;
+    }
+  }
+  
+  /**
+   * Generate key themes for the topic based on AI output
+   * @param topic The topic of the query
+   * @param aiThemes Key themes identified by AI
+   * @returns An array of keyword clusters
+   */
+  private generateKeyThemes(topic: string, aiThemes: string[] = []): string[] {
+    try {
+      if (!aiThemes || aiThemes.length === 0) {
+        // Default themes if AI didn't provide any
+        return [
+          `${topic} overview`,
+          `${topic} best practices`,
+          `${topic} examples`,
+          `${topic} benefits`
+        ];
+      }
+      
+      // Process and enhance AI themes
+      return aiThemes.map(theme => {
+        // If the theme doesn't contain the topic, prefix it
+        if (!theme.toLowerCase().includes(topic.toLowerCase()) && !topic.toLowerCase().includes(theme.toLowerCase())) {
+          return `${topic} ${theme}`;
+        }
+        return theme;
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to generate key themes: ${error.message}`);
+      return [`${topic} overview`, `${topic} guide`, `${topic} tutorial`];
+    }
+  }
+  
+  /**
+   * Generate search parameters based on the topic and intent
+   * @param topic The topic of the query
+   * @param intent The primary intent identified
+   * @param keyThemes Key themes identified for the topic
+   * @returns SearchParameters object for content discovery
+   */
+  private async generateSearchParameters(
+    topic: string, 
+    intent: string, 
+    keyThemes: string[] = []
+  ): Promise<SearchParameters> {
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a search optimization expert. Generate concise search parameters that will help discover high-quality, relevant content for the given topic and intent.'
+        },
+        {
+          role: 'user',
+          content: `Generate search parameters for topic: "${topic}" with primary intent: ${intent}. Key themes include: ${keyThemes.join(', ')}` 
+        }
+      ];
+      
+      const completion = await this.azureAIService.generateCompletion(messages);
+      const responseText = await this.azureAIService.getCompletion(completion);
+      
+      // Default search parameters
+      const defaultParams: SearchParameters = {
+        includeDomains: [],
+        excludeDomains: ['pinterest.com', 'quora.com'],
+        contentTypes: this.mapIntentToContentType(intent),
+        timeframe: intent === 'informational' ? 'any' : 'recent',
+        filters: {
+          recency: intent === 'informational' ? 'any' : 'recent',
+          contentTypes: this.mapIntentToContentType(intent),
+          minLength: intent === 'informational' ? '800' : '400'
+        }
+      };
+      
+      // Try to extract domains from the AI response
+      const includeDomainMatch = responseText.match(/include domains?:\s*([\w\s,.-]+)/i);
+      const excludeDomainMatch = responseText.match(/exclude domains?:\s*([\w\s,.-]+)/i);
+      
+      if (includeDomainMatch && includeDomainMatch[1]) {
+        defaultParams.includeDomains = includeDomainMatch[1]
+          .split(',')
+          .map(domain => domain.trim())
+          .filter(domain => domain.length > 0);
+      }
+      
+      if (excludeDomainMatch && excludeDomainMatch[1]) {
+        defaultParams.excludeDomains = excludeDomainMatch[1]
+          .split(',')
+          .map(domain => domain.trim())
+          .filter(domain => domain.length > 0)
+          .concat(defaultParams.excludeDomains || []);
+      }
+      
+      return defaultParams;
+    } catch (error) {
+      this.logger.warn(`Failed to generate search parameters: ${error.message}`);
+      // Return default search parameters on error
+      return {
+        includeDomains: [],
+        excludeDomains: ['pinterest.com', 'quora.com'],
+        contentTypes: this.mapIntentToContentType(intent),
+        timeframe: 'recent',
+        filters: {
+          recency: 'recent',
+          contentTypes: this.mapIntentToContentType(intent),
+          minLength: '600'
+        }
+      };
+    }
+  }
+  
+  /**
+   * Map content intent to preferred content types
+   * @param intent The primary content intent
+   * @returns Array of content types suited for the intent
+   */
+  private mapIntentToContentType(intent: string): string[] {
+    switch (intent.toLowerCase()) {
+      case 'informational':
+        return ['article', 'blog', 'guide', 'tutorial', 'whitepaper'];
+      case 'transactional':
+        return ['product', 'service', 'landing-page', 'review'];
+      case 'navigational':
+        return ['homepage', 'category-page', 'directory', 'index'];
+      case 'commercial':
+        return ['review', 'comparison', 'case-study', 'testimonial'];
+      default:
+        return ['article', 'blog', 'guide'];
+    }
+  }
+  
+  /**
+   * Store intent analysis in Cosmos DB for later retrieval
+   * @param intentAnalysis The intent analysis result to be stored
+   */
+  private async storeIntentAnalysis(intentAnalysis: QueryIntent): Promise<void> {
+    try {
+      this.logger.log(`Storing intent analysis for topic: ${intentAnalysis.topic}`);
+      
+      // Check if record already exists by topic
+      const querySpec = {
+        query: "SELECT * FROM c WHERE c.topic = @topic",
+        parameters: [
+          {
+            name: "@topic",
+            value: intentAnalysis.topic
+          }
+        ]
+      };
+      
+      const { resources: existingItems } = await this.container.items.query(querySpec).fetchAll();
+      
+      if (existingItems && existingItems.length > 0) {
+        // Update existing record
+        const existingItem = existingItems[0];
+        intentAnalysis.id = existingItem.id; // Use the same id to overwrite
+        
+        await this.container.item(existingItem.id, intentAnalysis.topic).replace(intentAnalysis);
+        this.logger.log(`Updated existing intent analysis for topic: ${intentAnalysis.topic}`);
+      } else {
+        // Create new record
+        await this.container.items.create(intentAnalysis);
+        this.logger.log(`Created new intent analysis for topic: ${intentAnalysis.topic}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to store intent analysis: ${error.message}`);
+      throw error;
+    }
+  }
+  /**
+   * Initialize Cosmos DB resources (database and containers)
+   */
+  private async initializeCosmosResources(): Promise<void> {
+    try {
+      this.logger.log('Initializing Cosmos DB resources...');
+      
+      // Create database if it doesn't exist
+      const { database } = await this.cosmosClient.databases.createIfNotExists({
+        id: this.databaseId
+      });
+      this.database = database;
+      
+      // Create query intents container if it doesn't exist
+      const { container } = await this.database.containers.createIfNotExists({
+        id: this.containerId,
+        partitionKey: { paths: ["/topic"] }
+      });
+      this.container = container;
+      
+      // Create content strategy container if it doesn't exist
+      const { container: strategyContainer } = await this.database.containers.createIfNotExists({
+        id: this.strategyContainerId,
+        partitionKey: { paths: ["/contentType"] }
+      });
+      this.strategyContainer = strategyContainer;
+      
+      this.logger.log('Cosmos DB resources initialized successfully');
+    } catch (error) {
+      this.logger.error(`Failed to initialize Cosmos DB resources: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  // Legacy analyzeIntent implementation replaced by unified method below
+  private async _analyzeSimpleTopic(topic: string): Promise<QueryIntent> {
+    try {
+      const systemMessage = `You are an expert content strategy AI that analyzes search queries and content topics to determine user intent. 
+      Respond with a valid JSON object containing the following fields:
+      - primaryIntent: The main intent category (informational, transactional, navigational, commercial)
+      - secondaryIntent: A subcategory of intent providing more context
+      - confidence: A number between 0 and 1 representing confidence in the intent analysis
+      - keyThemes: An array of 3-5 key themes or topics related to the query
+      - conversationalQueries: An array of 5 natural language questions a user might ask related to this topic
+      - queryTypes: An object mapping query types (how-to, what-is, comparison, etc.) to their relevance (0-1) for this topic`;
+      
+      const userMessage = `Topic: "${topic}"
+      
+      Analyze the user intent behind this topic or search query. Provide a detailed breakdown of the primary and secondary intent, along with key themes and related conversational queries.`;
+      
+      const options = {
+        temperature: 0.4,
+        maxTokens: 800,
+        systemMessage: systemMessage,
+        deploymentName: 'gpt-4'
+      };
+      
+      // Get AI completion from Azure OpenAI
+      const aiResponse = await this.azureAIService.getCompletion(userMessage, options);
+      
+      // Parse AI response (expecting JSON)
+      let intentData;
+      try {
+        // Look for JSON in the response
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          intentData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No valid JSON found in AI response');
+        }
+      } catch (parseError) {
+        this.logger.error(`Failed to parse AI response: ${parseError.message}`);
+        this.logger.error(`Raw AI response: ${aiResponse}`);
+        
+        // Fallback to basic intent
+        intentData = {
+          primaryIntent: 'informational',
+          secondaryIntent: 'general-knowledge',
+          confidence: 0.6,
+          keyThemes: [topic],
+          conversationalQueries: [`What is ${topic}?`, `Tell me about ${topic}`],
+          queryTypes: { 'what-is': 0.8, 'how-to': 0.2 }
+        };
+      }
+      
+      // Generate a suggested approach based on the intent
+      const suggestedApproach = await this.getSuggestedApproach(intentData.primaryIntent, intentData.secondaryIntent, topic);
+      
+      // Generate additional key themes if needed
+      if (!intentData.keyThemes || intentData.keyThemes.length === 0) {
+        intentData.keyThemes = await this.generateKeyThemes(topic, intentData.primaryIntent);
+      }
+      
+      // Generate search parameters based on the content topic and intent
+      const searchParams = this.generateSearchParameters(intentData.primaryIntent, topic);
+      
+      // Create a complete intent analysis document
+      const intentAnalysis: QueryIntent = {
+        id: uuidv4(),
+        topic: topic,
+        primaryIntent: intentData.primaryIntent,
+        secondaryIntent: intentData.secondaryIntent,
+        confidence: intentData.confidence,
+        suggestedApproach,
+        keyThemes: intentData.keyThemes,
+        conversationalQueries: intentData.conversationalQueries,
+        queryTypes: intentData.queryTypes,
+        searchParameters: searchParams,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the intent analysis in Cosmos DB
+      await this.storeIntentAnalysis(intentAnalysis);
+      
+      return intentAnalysis;
+    } catch (error) {
+      this.logger.error(`Error analyzing intent for "${topic}": ${error.message}`);
+      throw new Error(`Failed to analyze intent: ${error.message}`);
+    }
+  }
+
+  // Legacy implementation replaced by unified method below
+  private async _analyzeWithSegment(userInput: any, segment: 'b2b' | 'b2c'): Promise<QueryIntent> {
+    console.log(`Analyzing ${segment} intent for user input`, userInput.topic || 'new input');
+    
+    try {
+      const intentCategories = segment === 'b2b' 
+        ? [
+            'thought_leadership',
+            'product_comparison',
+            'technical_guide',
+            'case_study',
+            'industry_trend',
+            'problem_solution',
+            'decision_framework',
+          ] 
+        : [
+            'product_showcase',
+            'lifestyle_content',
+            'how_to_guide',
+            'review',
+            'emotional_appeal',
+            'brand_story',
+            'user_testimonials',
+          ];
+      
+      // Prompt for Azure AI Foundry to analyze intent
+      const promptTemplate = `
+      Analyze the content topic "${userInput.topic}" for a ${segment === 'b2b' ? 'B2B' : 'B2C'} audience.
+      
+      Additional context:
+      - Industry: ${userInput.industry || 'Technology'}
+      - Target audience: ${userInput.audience || 'General'}
+      - Content goals: ${userInput.goals || 'Engagement and education'}
+      
+      Determine the primary and secondary content intent categories from this list:
+      ${intentCategories.join(', ')}
+      
+      Also identify 4-6 key themes that should be covered in this content.
+      
+      Format your response as valid JSON with the following structure:
+      {
+        "primaryIntent": "intent_category",
+        "secondaryIntent": "intent_category",
+        "confidence": 0.95,
+        "keyThemes": ["theme1", "theme2", "theme3", "theme4"],
+        "conversationalQueries": ["question1?", "question2?", "question3?"],
+        "queryTypes": {"informational": 0.7, "navigational": 0.2, "transactional": 0.1}
+      }
+      `;
+      
+      // Call Azure AI Foundry using the service
+      const aiResponse = await this.azureAIService.getCompletion(promptTemplate, {
+        temperature: 0.3, // Low temperature for more deterministic results
+        maxTokens: 1000,
+        model: 'gpt-4' // Using GPT-4 for high-quality intent analysis
+      });
+      
+      // Parse the response
+      let intentAnalysis;
+      try {
+        // Extract JSON from the response text
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          intentAnalysis = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No valid JSON found in the AI response');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse AI response:', parseError);
+        // Fallback to default values
+        const randomPrimaryIntent = intentCategories[Math.floor(Math.random() * intentCategories.length)];
+        intentAnalysis = {
+          primaryIntent: randomPrimaryIntent,
+          secondaryIntent: intentCategories[Math.floor(Math.random() * intentCategories.length)],
+          confidence: 0.7,
+          keyThemes: this.generateKeyThemes(randomPrimaryIntent, segment),
+          conversationalQueries: [
+            `What is ${userInput.topic}?`,
+            `Why is ${userInput.topic} important?`,
+            `How to implement ${userInput.topic}?`
+          ],
+          queryTypes: {"informational": 0.7, "navigational": 0.2, "transactional": 0.1}
+        };
+      }
+      
+      // Ensure no duplicate intents
+      if (intentAnalysis.primaryIntent === intentAnalysis.secondaryIntent) {
+        // Find a different secondary intent
+        const availableIntents = intentCategories.filter(
+          intent => intent !== intentAnalysis.primaryIntent
+        );
+        intentAnalysis.secondaryIntent = 
+          availableIntents[Math.floor(Math.random() * availableIntents.length)];
+      }
+      
+      // Create the complete intent object
+      const result: QueryIntent = {
+        id: uuidv4(),
+        topic: userInput.topic,
+        primaryIntent: intentAnalysis.primaryIntent,
+        secondaryIntent: intentAnalysis.secondaryIntent,
+        confidence: intentAnalysis.confidence,
+        suggestedApproach: this.getSuggestedApproach(intentAnalysis.primaryIntent, segment),
+        keyThemes: intentAnalysis.keyThemes || this.generateKeyThemes(intentAnalysis.primaryIntent, segment),
+        conversationalQueries: intentAnalysis.conversationalQueries || [],
+        queryTypes: intentAnalysis.queryTypes || {},
+        searchParameters: this.generateSearchParameters(userInput.topic, intentAnalysis.primaryIntent),
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store in Cosmos DB
+      await this.storeIntentAnalysis(result);
+      
+      return result;
+    } catch (error) {
+      console.error('Error in intent analysis:', error);
+      throw new Error(`Intent analysis failed: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Generate search parameters for downstream processes
+   * @param topic Content topic
+   * @param primaryIntent Primary content intent
+   */
+  private generateSearchParameters(topic: string, primaryIntent: string): any {
+    // Generate search parameters based on topic and intent
+    return {
+      keywords: topic.split(' ').filter(word => word.length > 3),
+      filters: {
+        recency: primaryIntent.includes('trend') ? 'very_recent' : 'relevant',
+        contentTypes: this.mapIntentToContentType(primaryIntent),
+        minLength: primaryIntent.includes('guide') ? 'comprehensive' : 'standard'
+      },
+      semanticBoost: true,
+      intentWeights: {
+        informational: primaryIntent.includes('guide') || primaryIntent.includes('thought') ? 0.8 : 0.5,
+        transactional: primaryIntent.includes('product') || primaryIntent.includes('showcase') ? 0.7 : 0.3,
+        navigational: primaryIntent.includes('decision') ? 0.6 : 0.2
+      }
+    };
+  }
+  
+  /**
+   * Map content intent to preferred content types
+   * @param primaryIntent The primary content intent
+   */
+  // Renamed to be consistent with other methods
+  private mapIntentToContentType(primaryIntent: string): string[] {
+    const contentTypeMap = {
+      'thought_leadership': ['article', 'whitepaper', 'research'],
+      'product_comparison': ['review', 'comparison', 'analysis'],
+      'technical_guide': ['guide', 'documentation', 'tutorial'],
+      'case_study': ['case_study', 'testimonial', 'implementation'],
+      'industry_trend': ['news', 'analysis', 'report'],
+      'problem_solution': ['article', 'guide', 'how_to'],
+      'decision_framework': ['whitepaper', 'framework', 'methodology'],
+      'product_showcase': ['product', 'feature', 'benefit'],
+      'lifestyle_content': ['blog', 'story', 'social'],
+      'how_to_guide': ['how_to', 'tutorial', 'guide'],
+      'review': ['review', 'comparison', 'user_feedback'],
+      'emotional_appeal': ['story', 'testimonial', 'experience'],
+      'brand_story': ['story', 'history', 'values'],
+      'user_testimonials': ['testimonial', 'review', 'experience']
+    };
+    
+    return contentTypeMap[primaryIntent] || ['article', 'blog', 'guide'];
+  }
+  
+  /**
+   * Store intent analysis in Cosmos DB
+   * @param intentAnalysis The intent analysis result
+   */
+  private async storeIntentAnalysis(intentAnalysis: QueryIntent): Promise<void> {
+    try {
+      const container = this.cosmosClient
+        .database(this.databaseId)
+        .container(this.containerId);
+      
+      const { resource } = await container.items.create(intentAnalysis);
+      console.log(`Intent analysis stored with id: ${resource.id}`);
+    } catch (error) {
+      console.error('Failed to store intent analysis in Cosmos DB:', error);
+      // Don't throw here to prevent API failure if storage fails
+    }
+  }
+  }
+  
+  /**
+   * Generate content strategy based on intent analysis
+   * @param intentAnalysis The results of intent analysis
+   * @param segment B2B or B2C segment
+   */
+  async generateContentStrategy(intentAnalysis: any, segment: 'b2b' | 'b2c'): Promise<any> {
+    console.log(`Generating ${segment} content strategy based on intent analysis`);
+    
+    // In production, this would use Azure AI Foundry with Claude integration
+    
+    // Get strategy template based on primary intent and segment
+    const strategyTemplate = this.getStrategyTemplate(intentAnalysis.primaryIntent, segment);
+    
+    return {
+      contentType: intentAnalysis.primaryIntent,
+      segment,
+      structure: strategyTemplate.structure,
+      tonalityGuide: strategyTemplate.tonality,
+      contentElements: strategyTemplate.contentElements,
+      citationStrategy: strategyTemplate.citationStrategy,
+      suggestedLLMOptimizations: strategyTemplate.llmOptimizations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+  
+  private getSuggestedApproach(intent: string, segment: 'b2b' | 'b2c'): string {
+    // Mock approach suggestions based on intent and segment
+    const approaches = {
+      b2b: {
+        'thought_leadership': 'Establish industry authority with data-backed perspectives',
+        'product_comparison': 'Create detailed technical comparison with competitor solutions',
+        'technical_guide': 'Develop a comprehensive implementation framework',
+        'case_study': 'Structure as problem-solution-outcome with ROI focus',
+        'industry_trend': 'Analyze impact on business operations and strategy',
+        'problem_solution': 'Frame as business challenge with multiple solution paths',
+        'decision_framework': 'Provide structured evaluation criteria and methodology',
+      },
+      b2c: {
+        'product_showcase': 'Highlight lifestyle benefits and emotional appeal',
+        'lifestyle_content': 'Create aspirational narrative with product integration',
+        'how_to_guide': 'Develop simple step-by-step instructions with visuals',
+        'review': 'Focus on personal experience and relatable outcomes',
+        'emotional_appeal': 'Build narrative around emotional transformation',
+        'brand_story': 'Create connection through authentic brand journey',
+        'user_testimonials': 'Curate diverse user experiences with clear benefits',
+      }
+    };
+    
+    return approaches[segment][intent] || 'Develop comprehensive content with clear value proposition';
+  }
+  
+  private generateKeyThemes(intent: string, segment: 'b2b' | 'b2c'): string[] {
+    // Mock themes based on intent and segment
+    const themesByIntent = {
+      b2b: {
+        'thought_leadership': ['Industry innovation', 'Strategic vision', 'Data-driven insights', 'Future trends'],
+        'product_comparison': ['Technical specifications', 'Integration capabilities', 'Cost-benefit analysis', 'Implementation requirements'],
+        'technical_guide': ['Best practices', 'Implementation steps', 'Technical considerations', 'Troubleshooting'],
+        'case_study': ['Challenge identification', 'Solution approach', 'Implementation process', 'Measurable results'],
+        'industry_trend': ['Market evolution', 'Competitive landscape', 'Adoption metrics', 'Strategic implications'],
+        'problem_solution': ['Pain point analysis', 'Solution alternatives', 'Implementation frameworks', 'Expected outcomes'],
+        'decision_framework': ['Evaluation criteria', 'Comparison methodology', 'ROI calculation', 'Decision matrix'],
+      },
+      b2c: {
+        'product_showcase': ['Lifestyle benefits', 'User experience', 'Design highlights', 'Emotional appeal'],
+        'lifestyle_content': ['Aspirational elements', 'Daily integration', 'Personal improvement', 'Social context'],
+        'how_to_guide': ['Simple steps', 'Quick results', 'Common challenges', 'Success tips'],
+        'review': ['Personal experience', 'Comparison points', 'Value assessment', 'Recommendation basis'],
+        'emotional_appeal': ['Problem identification', 'Emotional journey', 'Transformation narrative', 'Relatable outcomes'],
+        'brand_story': ['Origin narrative', 'Value alignment', 'Mission focus', 'Community impact'],
+        'user_testimonials': ['Diverse experiences', 'Problem scenarios', 'Solution impact', 'Emotional response'],
+      }
+    };
+    
+    return themesByIntent[segment][intent] || ['Value proposition', 'Key benefits', 'Practical application', 'User outcomes'];
+  }
+  
+  private getStrategyTemplate(intent: string, segment: 'b2b' | 'b2c'): any {
+    // Mock strategy templates based on intent and segment
+    if (segment === 'b2b') {
+      return {
+        structure: [
+          'Executive Summary',
+          'Industry Context',
+          'Challenge Analysis', 
+          'Solution Framework',
+          'Implementation Guide',
+          'Case Examples',
+          'ROI Analysis',
+          'Next Steps'
+        ],
+        tonality: 'Professional, authoritative, data-driven, strategic',
+        contentElements: ['Industry statistics', 'Technical specifications', 'Process diagrams', 'ROI calculators', 'Expert quotes'],
+        citationStrategy: 'Academic and industry research, technical documentation, case studies',
+        llmOptimizations: ['Comprehensive topic coverage', 'Technical accuracy', 'Industry terminology', 'Problem-solution framework']
+      };
+    } else {
+      return {
+        structure: [
+          'Engaging Hook',
+          'Relatable Problem',
+          'Solution Introduction',
+          'Benefits Overview', 
+          'How-To Guide',
+          'Success Stories',
+          'Emotional Appeal',
+          'Call to Action'
+        ],
+        tonality: 'Conversational, empathetic, engaging, inspiring',
+        contentElements: ['Personal stories', 'Visual elements', 'Step-by-step guides', 'Before/after scenarios', 'Social proof'],
+        citationStrategy: 'Consumer testimonials, product reviews, lifestyle publications, expert opinions',
+        llmOptimizations: ['Question-answer format', 'Emotional engagement', 'Benefits focus', 'Relatable examples']
+      };
+    }
+  }
+}
