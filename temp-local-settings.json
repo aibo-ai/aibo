@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "KEY_VAULT_URL": "https://your-key-vault.vault.azure.net/",
+    "AZURE_COSMOS_ENDPOINT": "${AZURE_COSMOS_ENDPOINT}",
+    "AZURE_COSMOS_KEY": "${AZURE_COSMOS_KEY}",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+  },
+  "Host": {
+    "LocalHttpPort": 7071,
+    "CORS": "*"
+  }
+}

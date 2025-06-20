@@ -110,6 +110,30 @@ export class ExaApiClient {
   }
 
   /**
+   * Check if the client is properly configured
+   * @returns True if API key is available
+   */
+  isConfigured(): boolean {
+    return !!this.apiKey && this.apiKey.length > 0;
+  }
+
+  /**
+   * Search for recent content (alias for searchContent with date filtering)
+   * @param query Search query
+   * @param options Search options
+   * @returns Array of web search results
+   */
+  async searchRecent(query: string, options: ExaSearchOptions = {}): Promise<WebSearchResult[]> {
+    // Default to content from the last 30 days for "recent" searches
+    const recentOptions = {
+      ...options,
+      daysAgo: options.daysAgo || 30
+    };
+    
+    return this.searchContent(query, recentOptions);
+  }
+
+  /**
    * Map Exa API results to standardized format
    * @param results Raw Exa API results
    * @returns Standardized web search results

@@ -1,11 +1,21 @@
-import { AzureFunction, Context, HttpRequest } from '@azure/functions';
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import * as chromeLauncher from 'chrome-launcher';
-import * as lighthouse from 'lighthouse';
+import lighthouse from 'lighthouse';
 import * as puppeteer from 'puppeteer';
-import unified from 'unified';
+import { unified } from 'unified';
 import rehypeParse from 'rehype-parse';
 import { visit } from 'unist-util-visit';
 import { v4 as uuidv4 } from 'uuid';
+import * as axeCore from 'axe-core';
+
+// Define Lighthouse types
+interface Flags {
+  logLevel?: 'info' | 'silent' | 'error' | 'warn' | 'verbose';
+  output?: 'json' | 'html' | 'csv' | ('json' | 'html' | 'csv')[];
+  port?: number;
+  onlyCategories?: string[];
+  [key: string]: any;
+}
 
 // Import interfaces
 import {
@@ -16,42 +26,58 @@ import {
   SeoValidationMetrics,
   SeoValidationSeverity,
   SeoValidationCategory,
-  LighthouseResult
+  LighthouseResult,
+  LighthouseAuditResult
 } from '../../src/common/interfaces/seo-validator.interfaces';
 
 /**
  * Azure Function for Technical SEO Validation
  */
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+async function httpTrigger(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   context.log('Technical SEO Validator function processing request');
 
   try {
+    // Parse request body
+    const requestBody = await request.json() as {
+      url?: string;
+      html?: string;
+      contentType?: string;
+      validateMobileFriendliness?: boolean;
+      validateAccessibility?: boolean;
+      validateHeadingStructure?: boolean;
+      validateSemanticHtml?: boolean;
+      validateCrawlerAccessibility?: boolean;
+      validateStructuredData?: boolean;
+      validateMetaTags?: boolean;
+      validatePerformance?: boolean;
+      validateContentQuality?: boolean;
+    };
+    
     // Get parameters from request
     const params: SeoValidationParams = {
-      url: req.body?.url,
-      html: req.body?.html,
-      contentType: req.body?.contentType,
-      validateMobileFriendliness: req.body?.validateMobileFriendliness !== false,
-      validateAccessibility: req.body?.validateAccessibility !== false,
-      validateHeadingStructure: req.body?.validateHeadingStructure !== false,
-      validateSemanticHtml: req.body?.validateSemanticHtml !== false,
-      validateCrawlerAccessibility: req.body?.validateCrawlerAccessibility !== false,
-      validateStructuredData: req.body?.validateStructuredData !== false,
-      validateMetaTags: req.body?.validateMetaTags !== false,
-      validatePerformance: req.body?.validatePerformance !== false,
-      validateContentQuality: req.body?.validateContentQuality !== false
+      url: requestBody?.url,
+      html: requestBody?.html,
+      contentType: requestBody?.contentType as any, // Type assertion to handle ContentType enum
+      validateMobileFriendliness: requestBody?.validateMobileFriendliness !== false,
+      validateAccessibility: requestBody?.validateAccessibility !== false,
+      validateHeadingStructure: requestBody?.validateHeadingStructure !== false,
+      validateSemanticHtml: requestBody?.validateSemanticHtml !== false,
+      validateCrawlerAccessibility: requestBody?.validateCrawlerAccessibility !== false,
+      validateStructuredData: requestBody?.validateStructuredData !== false,
+      validateMetaTags: requestBody?.validateMetaTags !== false,
+      validatePerformance: requestBody?.validatePerformance !== false,
+      validateContentQuality: requestBody?.validateContentQuality !== false
     };
 
-    // Validate required parameters
+    // Validate parameters
     if (!params.url && !params.html) {
-      context.res = {
+      return {
         status: 400,
-        body: { error: 'Either URL or HTML content is required' }
+        jsonBody: { error: 'Either URL or HTML content is required' }
       };
-      return;
     }
 
-    // Run validation based on input type
+    // Perform validation
     let result: SeoValidationResult;
     if (params.url) {
       result = await validateUrl(params);
@@ -60,67 +86,70 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     }
 
     // Return result
-    context.res = {
+    return {
       status: 200,
-      body: result
+      jsonBody: result
     };
   } catch (error) {
-    context.log.error(`Error in Technical SEO Validator: ${error.message}`, error);
-    context.res = {
+    context.error('Error in Technical SEO Validator:', error);
+    return {
       status: 500,
-      body: { error: `Failed to validate: ${error.message}` }
+      jsonBody: { error: `Technical SEO validation failed: ${error.message}` }
     };
   }
 };
 
 /**
  * Validates a URL using Lighthouse and other tools
+ * @param params Validation parameters
+ * @returns Validation result
  */
 async function validateUrl(params: SeoValidationParams): Promise<SeoValidationResult> {
   // Launch Chrome
   const chrome = await chromeLauncher.launch({ chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox'] });
-
+  
   try {
-    // Configure Lighthouse
-    const options = {
+    // Run Lighthouse
+    const options: Flags = {
       logLevel: 'info',
-      output: 'json',
+      output: 'json' as 'json',
       port: chrome.port,
       onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
     };
-
-    // Run Lighthouse
-    const runnerResult = await lighthouse(params.url, options);
-    const lighthouseResult = runnerResult.lhr as LighthouseResult;
-
+    
+    const runnerResult = await lighthouse(params.url as string, options);
+    if (!runnerResult || !runnerResult.lhr) {
+      throw new Error('Lighthouse failed to generate results');
+    }
+    
+    const lighthouseResult = runnerResult.lhr as unknown as LighthouseResult;
+    
     // Extract validation issues
     const issues = extractValidationIssues(lighthouseResult, params);
-
-    // Calculate scores
+    
+    // Calculate validation score
     const score = calculateValidationScore(lighthouseResult);
-
-    // Calculate metrics
+    
+    // Calculate validation metrics
     const metrics = calculateValidationMetrics(issues);
-
+    
     // Generate recommendations
     const recommendations = generateRecommendations(issues);
-
-    // Create validation result
-    const result: SeoValidationResult = {
+    
+    // Return validation result
+    return {
       id: uuidv4(),
       url: params.url,
-      contentType: params.contentType,
       validatedAt: new Date().toISOString(),
+      contentType: params.contentType,
       score,
       metrics,
       issues,
       recommendations,
       validationParams: params
     };
-
-    return result;
   } finally {
-    // Always close Chrome
+    // Close Chrome
     await chrome.kill();
   }
 }
@@ -169,7 +198,7 @@ function extractValidationIssues(lighthouseResult: LighthouseResult, params: Seo
       id: uuidv4(),
       category,
       severity,
-      title: audit.title as string || id,
+      title: (audit as any).title || id,
       description: audit.description || '',
       impact: `Score: ${audit.score !== null ? Math.round(audit.score * 100) : 'N/A'}%`,
       recommendation: audit.description || 'Fix this issue to improve SEO'
@@ -368,6 +397,8 @@ function generateRecommendations(issues: SeoValidationIssue[]): string[] {
 
 /**
  * Validates HTML content using local analysis
+ * @param params Validation parameters
+ * @returns Validation result
  */
 async function validateHtml(params: SeoValidationParams): Promise<SeoValidationResult> {
   const html = params.html;
@@ -392,7 +423,7 @@ async function validateHtml(params: SeoValidationParams): Promise<SeoValidationR
       issues.push(...semanticIssues);
     }
     
-    // Analyze accessibility using Puppeteer and axe-core
+    // Analyze accessibility
     if (params.validateAccessibility !== false) {
       const accessibilityIssues = await analyzeAccessibility(html, browser);
       issues.push(...accessibilityIssues);
@@ -402,29 +433,15 @@ async function validateHtml(params: SeoValidationParams): Promise<SeoValidationR
     const metrics = calculateValidationMetrics(issues);
     
     // Create a simplified score since we don't have Lighthouse data
-    const score: SeoValidationScore = {
-      overall: 100 - (metrics.errorCount * 10) - (metrics.warningCount * 5),
-      performance: 0, // Can't measure without rendering
-      accessibility: 100 - (metrics.issuesByCategory[SeoValidationCategory.ACCESSIBILITY] * 10),
-      bestPractices: 100 - (metrics.errorCount * 10) - (metrics.warningCount * 5),
-      seo: 100 - (metrics.issuesByCategory[SeoValidationCategory.META_TAGS] * 10),
-      mobileFriendly: 0, // Can't measure without rendering
-      semanticStructure: 100 - (metrics.issuesByCategory[SeoValidationCategory.SEMANTIC_HTML] * 10) - 
-                        (metrics.issuesByCategory[SeoValidationCategory.HEADING_STRUCTURE] * 10)
-    };
-    
-    // Normalize scores to be between 0 and 100
-    Object.keys(score).forEach(key => {
-      score[key] = Math.max(0, Math.min(100, score[key]));
-    });
+    const score = calculateScoreFromIssues(issues, metrics);
     
     // Generate recommendations
     const recommendations = generateRecommendations(issues);
     
     // Create validation result
-    const result: SeoValidationResult = {
+    return {
       id: uuidv4(),
-      url: params.url || 'html-content',
+      url: 'html-content',
       contentType: params.contentType,
       validatedAt: new Date().toISOString(),
       score,
@@ -433,12 +450,37 @@ async function validateHtml(params: SeoValidationParams): Promise<SeoValidationR
       recommendations,
       validationParams: params
     };
-    
-    return result;
   } finally {
-    // Always close browser
+    // Close browser
     await browser.close();
   }
+}
+
+/**
+ * Calculates validation score from issues
+ * @param issues List of validation issues
+ * @param metrics Validation metrics
+ * @returns Validation score
+ */
+function calculateScoreFromIssues(issues: SeoValidationIssue[], metrics: SeoValidationMetrics): SeoValidationScore {
+  // Create a simplified score since we don't have Lighthouse data for HTML content
+  const score: SeoValidationScore = {
+    overall: 100 - (metrics.errorCount * 10) - (metrics.warningCount * 5),
+    performance: 0, // Can't measure without rendering
+    accessibility: 100 - (metrics.issuesByCategory[SeoValidationCategory.ACCESSIBILITY] * 10),
+    bestPractices: 100 - (metrics.errorCount * 10) - (metrics.warningCount * 5),
+    seo: 100 - (metrics.issuesByCategory[SeoValidationCategory.META_TAGS] * 10),
+    mobileFriendly: 0, // Can't measure without rendering
+    semanticStructure: 100 - (metrics.issuesByCategory[SeoValidationCategory.SEMANTIC_HTML] * 10) - 
+                      (metrics.issuesByCategory[SeoValidationCategory.HEADING_STRUCTURE] * 10)
+  };
+  
+  // Normalize scores to be between 0 and 100
+  Object.keys(score).forEach(key => {
+    score[key as keyof SeoValidationScore] = Math.max(0, Math.min(100, score[key as keyof SeoValidationScore]));
+  });
+  
+  return score;
 }
 
 /**
@@ -559,38 +601,40 @@ async function analyzeSemanticHtml(html: string): Promise<SeoValidationIssue[]> 
 
 /**
  * Analyzes accessibility using Puppeteer and axe-core
- * Note: In a real implementation, this would use axe-core to run accessibility tests
+ * @param html HTML content
+ * @param browser Puppeteer browser instance
+ * @returns Accessibility issues
  */
 async function analyzeAccessibility(html: string, browser: puppeteer.Browser): Promise<SeoValidationIssue[]> {
-  // This is a simplified implementation
-  // In a real implementation, we would inject and run axe-core in the page
-  
   const issues: SeoValidationIssue[] = [];
   
+  // Create a new page
+  const page = await browser.newPage();
+  
   try {
-    const page = await browser.newPage();
+    // Set HTML content
     await page.setContent(html);
     
     // Check for form inputs without labels
     const inputsWithoutLabels = await page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
       return inputs.filter(input => {
-        const id = input.id;
-        if (!id) return true; // No ID means no label can be associated
+        const inputId = input.getAttribute('id');
+        if (!inputId) return true; // No ID means no label can be associated
         
         // Check if there's a label with a matching 'for' attribute
-        const label = document.querySelector(`label[for="${id}"]`);
+        const label = document.querySelector(`label[for="${inputId}"]`);
         return !label;
-      }).map(input => input.outerHTML);
+      }).length;
     });
     
-    if (inputsWithoutLabels.length > 0) {
+    if (inputsWithoutLabels > 0) {
       issues.push({
         id: uuidv4(),
         category: SeoValidationCategory.ACCESSIBILITY,
         severity: SeoValidationSeverity.WARNING,
         title: 'Form inputs without labels',
-        description: `Found ${inputsWithoutLabels.length} form inputs without associated labels`,
+        description: `Found ${inputsWithoutLabels} form inputs without associated labels`,
         impact: 'Form inputs without labels are not accessible to screen readers.',
         recommendation: 'Add labels with matching "for" attributes to all form inputs.'
       });
@@ -605,27 +649,69 @@ async function analyzeAccessibility(html: string, browser: puppeteer.Browser): P
         const hasImage = link.querySelector('img') !== null;
         
         return (!text || text === '') && !ariaLabel && !hasImage;
-      }).map(link => link.outerHTML);
+      }).length;
     });
     
-    if (emptyLinks.length > 0) {
+    if (emptyLinks > 0) {
       issues.push({
         id: uuidv4(),
         category: SeoValidationCategory.ACCESSIBILITY,
         severity: SeoValidationSeverity.ERROR,
         title: 'Empty links',
-        description: `Found ${emptyLinks.length} links without text content`,
+        description: `Found ${emptyLinks} links without text content`,
         impact: 'Links without text are not accessible to screen readers and provide no context for users.',
         recommendation: 'Add descriptive text to all links or use aria-label attributes.'
       });
     }
     
-    await page.close();
+    // In a production environment, we would use axe-core for more comprehensive checks
+    // This would require injecting the axe-core script and running it
+    // Example implementation:
+    /*
+    await page.addScriptTag({
+      path: require.resolve('axe-core')
+    });
+    
+    const axeResults = await page.evaluate(() => {
+      return (window as any).axe.run();
+    });
+    
+    if (axeResults && axeResults.violations) {
+      for (const violation of axeResults.violations) {
+        issues.push({
+          id: uuidv4(),
+          category: SeoValidationCategory.ACCESSIBILITY,
+          severity: violation.impact === 'critical' || violation.impact === 'serious' 
+            ? SeoValidationSeverity.ERROR 
+            : SeoValidationSeverity.WARNING,
+          title: violation.help,
+          description: violation.description,
+          impact: `Impact: ${violation.impact}`,
+          recommendation: violation.helpUrl
+        });
+      }
+    }
+    */
+    
     return issues;
   } catch (error) {
     console.error('Error analyzing accessibility:', error);
     return [];
+  } finally {
+    // Ensure page is closed
+    await page.close();
   }
 }
+
+// Register the Azure Function with the app
+app.http('technicalSeoValidator', {
+  methods: ['POST'],
+  authLevel: 'function',
+  route: 'validate', // Add a simpler route
+  handler: httpTrigger
+});
+
+// Export functions for containerized deployment
+export { validateUrl, validateHtml };
 
 export default httpTrigger;

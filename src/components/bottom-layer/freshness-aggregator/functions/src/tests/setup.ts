@@ -1,5 +1,7 @@
 // Jest setup file for Azure Functions tests
 
+// Test utilities as module exports instead of globals
+
 // Mock environment variables for testing
 process.env.NODE_ENV = 'test';
 process.env.KEY_VAULT_URL = 'https://test-keyvault.vault.azure.net/';
@@ -77,15 +79,15 @@ jest.mock('applicationinsights', () => ({
   })
 }));
 
-// Global test utilities
-global.mockContext = {
+// Test utilities as exports
+export const mockContext = {
   invocationId: 'test-invocation-id',
   log: jest.fn(),
   res: {},
   done: jest.fn()
 };
 
-global.mockRequest = {
+export const mockRequest = {
   method: 'POST',
   url: 'https://test.azurewebsites.net/api/freshness-aggregator',
   headers: { 'content-type': 'application/json' },

@@ -13,11 +13,12 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
 
+const TEST_QUERY = 'artificial intelligence';
+
 async function testApiConnections() {
   // Load environment variables
   config();
   
-  const testQuery = 'artificial intelligence';
   const results: Record<string, { status: string; message: string; data?: any }> = {};
 
   console.log('Starting API connection tests...\n');
@@ -35,10 +36,9 @@ async function testApiConnections() {
     const serpClient = new SerpApiClient(apiKey);
     console.log('SerpApiClient created, testing search...');
     
-    const serpResults = await serpClient.search(testQuery, { 
-      num: 2,
-      gl: 'us',
-      hl: 'en'
+    const serpResults = await serpClient.search(TEST_QUERY, {
+      region: 'us',
+      language: 'en'
     });
     
     results.serp = {
@@ -66,38 +66,41 @@ async function testApiConnections() {
     };
   }
 
-  // Test 2: Twitter (X) API
+  // Test 2: Twitter API
+  console.log('\nTesting X (Twitter) API...');
   try {
-    console.log('Testing Twitter API...');
-    const twitterClient = new TwitterApiClient(
-      process.env.X_API_KEY,
-      process.env.X_API_SECRET,
-      process.env.X_BEARER_TOKEN
-    );
-    const twitterResults = await twitterClient.searchTweets(testQuery, { maxResults: 2 });
+    const apiKey = process.env.X_API_KEY;
+    const apiSecret = process.env.X_API_SECRET;
+    const bearerToken = process.env.X_BEARER_TOKEN;
+    
+    if (!apiKey || !apiSecret || !bearerToken) {
+      throw new Error('X API credentials are required');
+    }
+    
+    const twitterClient = new TwitterApiClient(apiKey, apiSecret, bearerToken);
+    const twitterResults = await twitterClient.searchTweets(TEST_QUERY, { maxResults: 2 });
     results.twitter = {
       status: '✅ Connected',
       message: `Found ${twitterResults?.length || 0} tweets`,
-      data: twitterResults?.[0] ? { 
-        title: twitterResults[0].title || 'No title',
-        url: twitterResults[0].url || 'No URL',
-        source: twitterResults[0].source || 'Twitter',
-        publishedAt: twitterResults[0].publishedAt?.toISOString() || new Date().toISOString()
-      } : undefined
+      data: twitterResults?.slice(0, 2)
     };
   } catch (error) {
-    results.twitter = { 
-      status: '❌ Failed', 
+    results.twitter = {
+      status: '❌ Failed',
       message: error.message,
-      data: error.response?.data || error.stack
+      data: error.stack
     };
   }
 
   // Test 3: News API
   try {
-    console.log('Testing News API...');
-    const newsClient = new NewsApiClient(process.env.NEWS_API_KEY);
-    const newsResults = await newsClient.searchNews(testQuery, { pageSize: 2 });
+    console.log('\n🔍 Testing News API...');
+    const mockConfigService = {
+      get: (key: string) => process.env[key]
+    } as any;
+    
+    const newsClient = new NewsApiClient(mockConfigService);
+    const newsResults = await newsClient.searchNews(TEST_QUERY, { pageSize: 2 });
     results.news = {
       status: '✅ Connected',
       message: `Found ${newsResults?.length || 0} articles`,
@@ -115,7 +118,7 @@ async function testApiConnections() {
   try {
     console.log('Testing Mediastack API...');
     const mediastackClient = new MediastackApiClient(process.env.MEDIASTACK_API_KEY);
-    const mediastackResults = await mediastackClient.searchNews(testQuery, { limit: 2 });
+    const mediastackResults = await mediastackClient.searchNews(TEST_QUERY, { limit: 2 });
     results.mediastack = {
       status: '✅ Connected',
       message: `Found ${mediastackResults?.length || 0} articles`,
@@ -141,7 +144,7 @@ async function testApiConnections() {
     
     // Test with absolute minimum parameters - just the query
     console.log('Testing Social Searcher API with minimal parameters');
-    const socialResults = await socialSearcherClient.searchSocial(testQuery, {
+    const socialResults = await socialSearcherClient.searchSocial(TEST_QUERY, {
       // No additional parameters
     });
     
@@ -179,9 +182,13 @@ async function testApiConnections() {
 
   // Test 6: Exa API
   try {
-    console.log('Testing Exa API...');
-    const exaClient = new ExaApiClient(process.env.EXA_API_KEY);
-    const exaResults = await exaClient.searchRecent(testQuery, { numResults: 2 });
+    console.log('\n🔍 Testing Exa API...');
+    const mockConfigService = {
+      get: (key: string) => process.env[key]
+    } as any;
+    
+    const exaClient = new ExaApiClient(mockConfigService);
+    const exaResults = await exaClient.searchRecent(TEST_QUERY, { numResults: 2 });
     results.exa = {
       status: '✅ Connected',
       message: `Found ${exaResults?.length || 0} results`,

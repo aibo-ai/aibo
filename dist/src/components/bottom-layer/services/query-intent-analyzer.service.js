@@ -15,15 +15,17 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const cosmos_1 = require("@azure/cosmos");
 const azure_ai_service_1 = require("../../../shared/services/azure-ai.service");
+const redis_cache_service_1 = require("../../../shared/services/redis-cache.service");
 const intentClassifier_1 = require("./intentClassifier");
 const queryGenerator_1 = require("./queryGenerator");
 const searchParameterGenerator_1 = require("./searchParameterGenerator");
 const uuid_1 = require("uuid");
 const axios_1 = require("axios");
 let QueryIntentAnalyzerService = QueryIntentAnalyzerService_1 = class QueryIntentAnalyzerService {
-    constructor(configService, azureAIService, intentClassifier, queryGenerator, searchParameterGenerator) {
+    constructor(configService, azureAIService, redisCacheService, intentClassifier, queryGenerator, searchParameterGenerator) {
         this.configService = configService;
         this.azureAIService = azureAIService;
+        this.redisCacheService = redisCacheService;
         this.intentClassifier = intentClassifier;
         this.queryGenerator = queryGenerator;
         this.searchParameterGenerator = searchParameterGenerator;
@@ -96,167 +98,29 @@ let QueryIntentAnalyzerService = QueryIntentAnalyzerService_1 = class QueryInten
             throw error;
         }
     }
-    async analyzeIntent(input, segment) {
+    async analyzeIntent(userInput, segment) {
         try {
-            if (typeof input === 'string') {
-                return this.analyzeTopicIntent(input);
-            }
-            else if (segment) {
-                return this.analyzeSegmentIntent(input, segment);
-            }
-            else {
-                return this.analyzeUserInputIntent(input);
-            }
+            const input = typeof userInput === 'string' ? { topic: userInput } : userInput;
+            const targetSegment = segment || 'b2b';
+            const cacheKey = `intent_analysis:${input.topic.toLowerCase().replace(/\s+/g, '_')}:${targetSegment}`;
+            return await this.redisCacheService.getOrSet(cacheKey, async () => {
+                const existingAnalysis = await this.retrieveIntentAnalysis(input.topic, targetSegment);
+                if (existingAnalysis) {
+                    this.logger.log(`Using database intent analysis for topic: ${input.topic}`);
+                    return existingAnalysis;
+                }
+                const analysis = await this.analyzeSegmentIntent(input, targetSegment);
+                return analysis;
+            }, 86400);
         }
         catch (error) {
             this.logger.error(`Error analyzing intent: ${error.message}`);
-            throw error;
-        }
-    }
-    mapIntentToContentType(intent) {
-        switch (intent.toLowerCase()) {
-            case 'informational':
-                return ['article', 'blog', 'guide', 'tutorial', 'whitepaper'];
-            case 'transactional':
-                return ['product', 'service', 'landing-page', 'review'];
-            case 'navigational':
-                return ['homepage', 'category-page', 'directory', 'index'];
-            case 'commercial':
-                return ['review', 'comparison', 'case-study', 'testimonial'];
-            default:
-                return ['article', 'blog', 'guide'];
-        }
-    }
-    async storeIntentAnalysis(intentAnalysis) {
-        try {
-            this.logger.log(`Storing intent analysis for topic: ${intentAnalysis.topic}`);
-            await this.queryIntentsContainer.items.create(intentAnalysis);
-            this.logger.log(`Intent analysis stored with id: ${intentAnalysis.id}`);
-        }
-        catch (error) {
-            this.logger.error(`Failed to store intent analysis: ${error.message}`);
-        }
-    }
-    async analyzeTopicIntent(topic) {
-        try {
-            this.logger.log(`Analyzing intent for topic: ${topic}`);
-            const intentResult = await this.intentClassifier.classifyIntent(topic);
-            const searchParams = await this.searchParameterGenerator.generateSearchParameters(topic, intentResult.primaryIntent, intentResult.keyThemes);
-            const queryExpansion = await this.queryGenerator.generateConversationalQueries(topic, intentResult);
-            const keywordClusters = this.generateKeywordClusters(topic, intentResult.keyThemes);
-            const suggestedApproach = await this.getSuggestedApproach(topic, intentResult.primaryIntent);
-            const intentAnalysis = {
-                id: (0, uuid_1.v4)(),
-                topic,
-                primaryIntent: intentResult.primaryIntent,
-                secondaryIntents: intentResult.secondaryIntents || [],
-                keyThemes: intentResult.keyThemes || [],
-                keywordClusters,
-                queryTypeDistribution: this.getDefaultQueryTypes(),
-                searchParameters: this.convertToLocalSearchParameters(searchParams),
-                timestamp: new Date().toISOString(),
-                confidence: intentResult.confidence || 0.7,
-                suggestedApproach,
-                intentScores: intentResult.intentScores || {
-                    informational: 0,
-                    navigational: 0,
-                    transactional: 0,
-                    commercial: 0
-                },
-                expandedQueries: queryExpansion.expandedQueries,
-                semanticQueries: queryExpansion.semanticQueries,
-                relatedConcepts: queryExpansion.relatedConcepts,
-                conversationalQueries: queryExpansion.conversationalQueries || [],
-                queryExpansion: {
-                    expandedQueries: queryExpansion.expandedQueries,
-                    semanticQueries: queryExpansion.semanticQueries,
-                    relatedConcepts: queryExpansion.relatedConcepts
-                }
-            };
-            await this.storeIntentAnalysis(intentAnalysis);
-            return intentAnalysis;
-        }
-        catch (error) {
-            this.logger.error(`Error analyzing topic intent: ${error.message}`);
-            return this.createDefaultResponse(topic);
-        }
-    }
-    async analyzeUserInputIntent(userInput) {
-        try {
-            this.logger.log(`Analyzing intent for topic with context: ${userInput.topic}`);
-            const systemPrompt = `You are an intent analysis expert. Analyze the user's query intent for the provided topic.
-        Determine the primary and secondary intent, confidence level, and provide recommendations.
-        Return your analysis as valid JSON with the following structure:
-        {
-          "primaryIntent": "one of [informational, transactional, navigational, commercial]",
-          "secondaryIntents": ["array of secondary intents"],
-          "confidence": decimal between 0-1,
-          "queryTypeDistribution": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
-          "conversationalQueries": [array of 3-5 related conversational queries],
-          "keyThemes": [array of 3-7 key themes/topics relevant to the query]
-        }`;
-            const userPrompt = `Analyze the following topic: ${userInput.topic}${userInput.context ? `\nContext: ${userInput.context}` : ''}${userInput.keywords ? `\nKeywords: ${userInput.keywords.join(', ')}` : ''}${userInput.industry ? `\nIndustry: ${userInput.industry}` : ''}${userInput.audience ? `\nTarget audience: ${userInput.audience}` : ''}${userInput.goals ? `\nGoals: ${userInput.goals}` : ''}`;
-            const prompt = `${systemPrompt}\n\n${userPrompt}`;
-            const completion = await this.azureAIService.generateCompletion(prompt);
-            const responseText = await this.azureAIService.getCompletion(completion);
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            const jsonResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : this.createDefaultResponse(userInput.topic);
-            const queryExpansion = await this.expandQuery(userInput.topic);
-            const searchResults = await this.performSemanticSearch(userInput.topic, {
-                top: 5,
-                queryLanguage: 'en-us'
-            });
-            const suggestedApproach = await this.getSuggestedApproach(userInput.topic, jsonResponse.primaryIntent);
-            const searchParams = await this.generateSearchParameters(userInput.topic, jsonResponse.primaryIntent, jsonResponse.keyThemes);
-            const intentAnalysis = {
-                id: (0, uuid_1.v4)(),
-                topic: userInput.topic,
-                primaryIntent: jsonResponse.primaryIntent,
-                secondaryIntents: jsonResponse.secondaryIntents || [],
-                confidence: jsonResponse.confidence || 0.7,
-                suggestedApproach,
-                keyThemes: jsonResponse.keyThemes || [],
-                keywordClusters: this.generateKeywordClusters(userInput.topic, jsonResponse.keyThemes || []),
-                conversationalQueries: jsonResponse.conversationalQueries || [],
-                queryTypeDistribution: jsonResponse.queryTypeDistribution || this.getDefaultQueryTypes(),
-                searchParameters: searchParams,
-                timestamp: new Date().toISOString(),
-                expandedQueries: queryExpansion.expandedQueries,
-                semanticQueries: queryExpansion.semanticQueries,
-                relatedConcepts: queryExpansion.relatedConcepts,
-                queryExpansion: {
-                    expandedQueries: queryExpansion.expandedQueries,
-                    semanticQueries: queryExpansion.semanticQueries,
-                    relatedConcepts: queryExpansion.relatedConcepts
-                },
-                semanticSearchResults: searchResults.results.slice(0, 3)
-            };
-            await this.storeIntentAnalysis(intentAnalysis);
-            return intentAnalysis;
-        }
-        catch (error) {
-            this.logger.error(`Error analyzing user input intent: ${error.message}`);
-            throw error;
+            return this.createDefaultResponse(typeof userInput === 'string' ? userInput : userInput.topic);
         }
     }
     async analyzeSegmentIntent(userInput, segment) {
         try {
-            this.logger.log(`Analyzing ${segment} intent for topic: ${userInput.topic}`);
-            const systemPrompt = `You are an intent analysis expert for ${segment === 'b2b' ? 'business-to-business' : 'business-to-consumer'} content.
-        Analyze the provided topic specifically for ${segment === 'b2b' ? 'business-to-business' : 'business-to-consumer'} audiences.
-        Determine the primary and secondary intent specific to ${segment === 'b2b' ? 'business-to-business' : 'business-to-consumer'} contexts, confidence level, and provide recommendations.
-        Return your analysis as valid JSON with the following structure:
-        {
-          "primaryIntent": "one of [informational, transactional, navigational, commercial]",
-          "secondaryIntents": ["array of secondary intents"],
-          "confidence": decimal between 0-1,
-          "queryTypeDistribution": { "informational": decimal, "transactional": decimal, "navigational": decimal, "commercial": decimal },
-          "conversationalQueries": [array of 3-5 related conversational queries],
-          "keyThemes": [array of 3-7 key themes/topics relevant to the query],
-          "suggestedApproach": "brief description of recommended content approach"
-        }`;
-            const userPrompt = `Analyze the following topic for ${segment} audience: ${userInput.topic}${userInput.context ? `\nContext: ${userInput.context}` : ''}${userInput.keywords ? `\nKeywords: ${userInput.keywords.join(', ')}` : ''}${userInput.industry ? `\nIndustry: ${userInput.industry}` : ''}${userInput.audience ? `\nTarget audience: ${userInput.audience}` : ''}${userInput.goals ? `\nGoals: ${userInput.goals}` : ''}`;
-            const prompt = `${systemPrompt}\n\n${userPrompt}`;
+            const prompt = `Analyze the intent behind the topic "${userInput.topic}" for ${segment === 'b2b' ? 'business-to-business' : 'business-to-consumer'} audience.`;
             const completion = await this.azureAIService.generateCompletion(prompt, {
                 deploymentName: this.aiFoundryDeploymentName,
                 temperature: 0.3,
@@ -271,7 +135,7 @@ let QueryIntentAnalyzerService = QueryIntentAnalyzerService_1 = class QueryInten
                 queryLanguage: 'en-us',
                 filter: segment === 'b2b' ? 'audience eq \'business\'' : 'audience eq \'consumer\''
             });
-            const searchParams = await this.searchParameterGenerator.generateSearchParameters(userInput.topic, result.primaryIntent, result.keyThemes, segment);
+            const searchParams = await this.searchParameterGenerator.generateSearchParameters(userInput.topic, result.primaryIntent);
             const intentAnalysis = {
                 id: (0, uuid_1.v4)(),
                 topic: userInput.topic,
@@ -306,283 +170,259 @@ let QueryIntentAnalyzerService = QueryIntentAnalyzerService_1 = class QueryInten
             return defaultResponse;
         }
     }
-    getDefaultContentStrategy(intent, segment) {
-        const template = {
-            contentType: this.mapIntentToContentType(intent)[0],
-            segment: segment,
-            structure: [
-                'Introduction and problem statement',
-                'Key benefits and value proposition',
-                'Supporting evidence and statistics',
-                'Implementation steps or methodology',
-                'Conclusion with call to action'
-            ],
-            tonalityGuide: segment === 'b2b' ? 'Professional, authoritative, evidence-based with industry terminology' : 'Approachable, clear, solutions-oriented with everyday language',
-            contentElements: [
-                'Data visualizations',
-                'Expert quotes',
-                'Real-world examples',
-                'Action steps'
-            ],
-            citationStrategy: 'Industry research with authoritative sources',
-            suggestedLLMOptimizations: [
-                'Clear section headers',
-                'Bulleted lists for key points',
-                'Summary paragraphs at section ends'
-            ],
-            timestamp: new Date().toISOString()
-        };
-        const defaultContentStrategy = Object.assign(Object.assign({ id: (0, uuid_1.v4)() }, template), { expandedQueries: [], semanticQueries: [], relatedConcepts: [] });
-        return defaultContentStrategy;
+    async retrieveIntentAnalysis(topic, segment) {
+        try {
+            const cacheKey = `cosmos_intent:${topic.toLowerCase().replace(/\s+/g, '_')}:${segment}`;
+            return await this.redisCacheService.getOrSet(cacheKey, async () => {
+                const querySpec = {
+                    query: 'SELECT * FROM c WHERE c.segment = @segment AND c.topic = @topic ORDER BY c._ts DESC OFFSET 0 LIMIT 1',
+                    parameters: [
+                        { name: '@topic', value: topic },
+                        { name: '@segment', value: segment }
+                    ]
+                };
+                const feedOptions = {
+                    maxItemCount: 1
+                };
+                const { resources } = await this.queryIntentsContainer.items
+                    .query(querySpec, feedOptions)
+                    .fetchAll();
+                if (resources.length > 0) {
+                    return resources[0];
+                }
+                return null;
+            }, 3600);
+        }
+        catch (error) {
+            this.logger.error(`Error retrieving intent analysis: ${error.message}`);
+            return null;
+        }
     }
-    createDefaultResponse(topic, segment) {
-        const defaultIntent = segment === 'b2b' ? 'informational' : 'commercial';
-        const defaultKeyThemes = [topic, ...topic.split(' ').filter(word => word.length > 3)];
-        const intentAnalysis = {
-            id: (0, uuid_1.v4)(),
-            topic,
-            segment,
-            primaryIntent: defaultIntent,
-            secondaryIntents: segment === 'b2b' ? ['commercial'] : ['informational'],
-            keyThemes: defaultKeyThemes.slice(0, 5),
-            confidence: 0.6,
-            suggestedApproach: this.getDefaultApproachBySegment(defaultIntent, segment),
-            searchParameters: {
-                includeDomains: [],
-                excludeDomains: ['pinterest.com', 'quora.com'],
-                contentTypes: this.mapIntentToContentType(defaultIntent),
-                timeframe: 'recent',
-                filters: {
-                    recency: 'recent',
-                    contentTypes: this.mapIntentToContentType(defaultIntent),
-                    minLength: segment === 'b2b' ? '2000' : '1000'
-                },
-                semanticBoost: true
+    async storeIntentAnalysis(intentAnalysis) {
+        try {
+            await this.queryIntentsContainer.items.upsert(intentAnalysis);
+            this.logger.log(`Intent analysis stored for topic: ${intentAnalysis.topic}`);
+            const cacheKey = `intent_analysis:${intentAnalysis.topic.toLowerCase().replace(/\s+/g, '_')}:${intentAnalysis.segment}`;
+            await this.redisCacheService.set(cacheKey, intentAnalysis, 86400);
+            const cosmosKey = `cosmos_intent:${intentAnalysis.topic.toLowerCase().replace(/\s+/g, '_')}:${intentAnalysis.segment}`;
+            await this.redisCacheService.set(cosmosKey, intentAnalysis, 3600);
+        }
+        catch (error) {
+            this.logger.error(`Failed to store intent analysis: ${error.message}`);
+        }
+    }
+    generateKeywordClusters(topic, themes, segment) {
+        const baseKeywords = [
+            `${topic} guide`,
+            `${topic} tutorial`,
+            `${topic} best practices`,
+            `${topic} examples`
+        ];
+        const themeKeywords = themes.map(theme => [
+            `${topic} ${theme}`,
+            `${theme} in ${topic}`,
+            `how to use ${theme} with ${topic}`,
+            `${topic} ${theme} examples`
+        ]).flat();
+        const segmentKeywords = segment ? (segment === 'b2b' ? [
+            `${topic} for business`,
+            `enterprise ${topic} solutions`,
+            `${topic} ROI`,
+            `${topic} implementation`,
+            `${topic} integration`
+        ] : [
+            `${topic} for consumers`,
+            `personal ${topic}`,
+            `${topic} benefits`,
+            `easy ${topic}`,
+            `${topic} for beginners`
+        ]) : [];
+        return Array.from(new Set([...baseKeywords, ...themeKeywords, ...segmentKeywords]));
+    }
+    async getSuggestedApproach(topic, intent, segment) {
+        try {
+            const prompt = 'Generate a content strategy approach for ' + topic + ' with ' + intent +
+                ' intent for ' + (segment === 'b2b' ? 'business-to-business' : 'business-to-consumer') + ' audience.';
+            const completion = await this.azureAIService.generateCompletion(prompt, {
+                deploymentName: this.aiFoundryDeploymentName,
+                temperature: 0.7,
+                maxTokens: 200
+            });
+            const response = await this.azureAIService.getCompletion(completion);
+            return response.trim();
+        }
+        catch (error) {
+            this.logger.warn('Failed to generate suggested approach: ' + error.message);
+            return this.getDefaultContentStrategy(intent, segment);
+        }
+    }
+    getDefaultContentStrategy(intent, segment) {
+        const approaches = {
+            b2b: {
+                'informational': 'Create in-depth, data-driven content that establishes thought leadership and addresses industry pain points',
+                'commercial': 'Develop ROI-focused content that emphasizes business value, scalability, and integration capabilities',
+                'navigational': 'Create structured, solution-oriented content with clear pathways to technical documentation and support',
+                'transactional': 'Develop streamlined content that facilitates purchasing decisions with clear pricing models and case studies',
+                'comparison': 'Create detailed comparison frameworks that evaluate solutions based on business-critical features and scalability'
             },
-            queryTypeDistribution: this.getDefaultQueryTypes(segment),
-            timestamp: new Date().toISOString(),
-            expandedQueries: [`${topic} guide`, `${topic} tutorial`, `${topic} examples`],
-            semanticQueries: [`how to understand ${topic}`, `learn about ${topic}`],
-            relatedConcepts: [`${topic} basics`, `${topic} fundamentals`],
-            queryExpansion: {
-                expandedQueries: [`${topic} guide`, `${topic} tutorial`, `${topic} examples`],
-                semanticQueries: [`how to understand ${topic}`, `learn about ${topic}`],
-                relatedConcepts: [`${topic} basics`, `${topic} fundamentals`]
-            },
-            semanticSearchResults: []
+            b2c: {
+                'informational': 'Create accessible, engaging content that answers common questions and provides value without technical jargon',
+                'commercial': 'Develop persuasive content that emphasizes benefits, lifestyle improvements, and addresses personal pain points',
+                'navigational': 'Create intuitive, user-friendly content that guides consumers through options with clear next steps',
+                'transactional': 'Develop concise content that simplifies decision-making with compelling calls-to-action',
+                'comparison': 'Create easy-to-understand comparison content that highlights key differences in features, pricing, and user benefits'
+            }
         };
-        return intentAnalysis;
+        return approaches[segment][intent.toLowerCase()] ||
+            'Create valuable content that addresses user needs with clear structure and actionable insights';
     }
     getDefaultQueryTypes(segment) {
         if (segment === 'b2b') {
             return {
+                informational: 0.5,
+                navigational: 0.2,
+                commercial: 0.2,
+                transactional: 0.05,
+                comparison: 0.05
+            };
+        }
+        else if (segment === 'b2c') {
+            return {
                 informational: 0.4,
-                transactional: 0.3,
-                navigational: 0.1,
-                commercial: 0.2
-            };
-        }
-        else if (segment === 'b2c') {
-            return {
-                informational: 0.3,
-                transactional: 0.4,
-                navigational: 0.1,
-                commercial: 0.2
+                navigational: 0.15,
+                commercial: 0.15,
+                transactional: 0.2,
+                comparison: 0.1
             };
         }
         else {
             return {
-                informational: 0.35,
-                transactional: 0.35,
-                navigational: 0.1,
-                commercial: 0.2
+                informational: 0.6,
+                navigational: 0.2,
+                commercial: 0.1,
+                transactional: 0.05,
+                comparison: 0.05
             };
         }
     }
-    generateKeywordClusters(topic, themes, segment) {
-        const baseClusters = [
-            `${topic} overview`,
-            `${topic} guide`,
-            `${topic} tutorial`,
-            `best ${topic} practices`
-        ];
-        if (segment === 'b2b') {
-            baseClusters.push(`enterprise ${topic} solutions`, `${topic} for business`, `${topic} ROI`, `${topic} implementation strategy`);
+    convertToLocalSearchParameters(externalParams) {
+        var _a, _b, _c;
+        return {
+            includeDomains: Array.isArray(externalParams.includeDomains) ? externalParams.includeDomains : [],
+            excludeDomains: Array.isArray(externalParams.excludeDomains) ? externalParams.excludeDomains : [],
+            contentTypes: Array.isArray(externalParams.contentTypes) ? externalParams.contentTypes : ['article', 'blog'],
+            timeframe: externalParams.timeframe || 'recent',
+            filters: {
+                recency: ((_a = externalParams.filters) === null || _a === void 0 ? void 0 : _a.recency) || 'last_year',
+                contentTypes: Array.isArray((_b = externalParams.filters) === null || _b === void 0 ? void 0 : _b.contentTypes) ?
+                    externalParams.filters.contentTypes : ['article', 'blog'],
+                minLength: ((_c = externalParams.filters) === null || _c === void 0 ? void 0 : _c.minLength) || '500'
+            },
+            semanticBoost: externalParams.semanticBoost !== undefined ? externalParams.semanticBoost : true,
+            expandedQueries: Array.isArray(externalParams.expandedQueries) ? externalParams.expandedQueries : [],
+            semanticQueries: Array.isArray(externalParams.semanticQueries) ? externalParams.semanticQueries : []
+        };
+    }
+    createDefaultResponse(topic, segment) {
+        const timestamp = new Date().toISOString();
+        const defaultIntent = 'informational';
+        const defaultSearchParams = {
+            includeDomains: [],
+            excludeDomains: [],
+            contentTypes: ['article', 'blog', 'guide'],
+            timeframe: 'last_year',
+            filters: {
+                recency: segment === 'b2b' ? 'last_year' : 'last_month',
+                contentTypes: this.mapIntentToContentType(defaultIntent),
+                minLength: segment === 'b2b' ? '2000' : '1000'
+            },
+            semanticBoost: true,
+            expandedQueries: [topic + ' guide', topic + ' tutorial'],
+            semanticQueries: ['how to use ' + topic, 'learn about ' + topic]
+        };
+        return {
+            id: (0, uuid_1.v4)(),
+            topic,
+            segment,
+            primaryIntent: defaultIntent,
+            secondaryIntents: ['navigational'],
+            keyThemes: [topic + ' basics', topic + ' examples', topic + ' best practices'],
+            searchParameters: defaultSearchParams,
+            timestamp,
+            confidence: 0.5,
+            suggestedApproach: segment ?
+                this.getDefaultContentStrategy(defaultIntent, segment) :
+                'Create informational content focusing on basic concepts and practical examples',
+            intentScores: {
+                informational: 0.7,
+                navigational: 0.2,
+                transactional: 0.05,
+                commercial: 0.05
+            },
+            expandedQueries: [topic + ' guide', topic + ' tutorial', topic + ' examples'],
+            semanticQueries: ['how to use ' + topic, 'learn about ' + topic],
+            relatedConcepts: [topic + ' basics', topic + ' fundamentals'],
+            queryExpansion: {
+                expandedQueries: [topic + ' guide', topic + ' tutorial', topic + ' examples'],
+                semanticQueries: ['how to use ' + topic, 'learn about ' + topic],
+                relatedConcepts: [topic + ' basics', topic + ' fundamentals']
+            },
+            semanticSearchResults: []
+        };
+    }
+    mapIntentToContentType(intent) {
+        switch (intent.toLowerCase()) {
+            case 'informational':
+                return ['article', 'blog', 'guide', 'tutorial', 'whitepaper'];
+            case 'transactional':
+                return ['product', 'service', 'landing-page', 'review'];
+            case 'navigational':
+                return ['homepage', 'category-page', 'directory', 'index'];
+            case 'commercial':
+                return ['review', 'comparison', 'case-study', 'testimonial'];
+            default:
+                return ['article', 'blog', 'guide'];
         }
-        else if (segment === 'b2c') {
-            baseClusters.push(`${topic} for beginners`, `easy ${topic} guide`, `${topic} tips and tricks`, `affordable ${topic} options`);
-        }
-        if (themes && themes.length > 0) {
-            const themeClusters = themes.map(theme => {
-                if (!theme.toLowerCase().includes(topic.toLowerCase()) &&
-                    !topic.toLowerCase().includes(theme.toLowerCase())) {
-                    return `${topic} ${theme}`;
+    }
+    async performSemanticSearch(query, options) {
+        try {
+            const optionsHash = JSON.stringify(options || {});
+            const cacheKey = `semantic_search:${query.toLowerCase().replace(/\s+/g, '_')}:${Buffer.from(optionsHash).toString('base64').substring(0, 10)}`;
+            return await this.redisCacheService.getOrSet(cacheKey, async () => {
+                if (!this.searchEndpoint || !this.searchKey) {
+                    throw new Error('Azure AI Search configuration is incomplete');
                 }
-                return theme;
-            });
-            return Array.from(new Set([...baseClusters, ...themeClusters]));
-        }
-        return baseClusters;
-    }
-    async getSuggestedApproach(topic, intent, segment) {
-        try {
-            const systemPrompt = 'You are a content strategy expert. Provide a concise, actionable content approach based on the topic and intent.';
-            let userPrompt = `Generate a content approach suggestion for topic: "${topic}" with primary intent: ${intent}`;
-            if (segment) {
-                userPrompt += ` for ${segment === 'b2b' ? 'business-to-business' : 'business-to-consumer'} audience.`;
-            }
-            const prompt = `${systemPrompt}\n\n${userPrompt}`;
-            const completion = await this.azureAIService.generateCompletion(prompt);
-            const responseText = await this.azureAIService.getCompletion(completion);
-            return responseText.length > 200 ? responseText.substring(0, 197) + '...' : responseText;
-        }
-        catch (error) {
-            this.logger.warn(`Failed to generate suggested approach: ${error.message}`);
-            return `Create comprehensive content about ${topic} focusing on ${intent} aspects${segment ? ` for ${segment} audience` : ''}.`;
-        }
-    }
-    getDefaultApproachBySegment(intent, segment) {
-        if (segment === 'b2b') {
-            if (intent === 'informational') {
-                return 'Create in-depth, data-driven content that establishes thought leadership and addresses business pain points.';
-            }
-            else if (intent === 'commercial') {
-                return 'Develop ROI-focused content that highlights business value and competitive advantages.';
-            }
-            else {
-                return 'Create solution-oriented content that guides business decision-makers through the evaluation process.';
-            }
-        }
-        else {
-            if (intent === 'informational') {
-                return 'Create accessible, engaging content that educates consumers and builds brand awareness.';
-            }
-            else if (intent === 'commercial') {
-                return 'Develop benefit-focused content that emphasizes value and addresses consumer pain points.';
-            }
-            else {
-                return 'Create practical content that guides consumers through their decision journey with clear CTAs.';
-            }
-        }
-    }
-    async expandQuery(query) {
-        try {
-            this.logger.log(`Expanding query: ${query}`);
-            const result = await this.queryGenerator.generateConversationalQueries(query);
-            return {
-                originalQuery: query,
-                expandedQueries: result.expandedQueries || [],
-                semanticQueries: result.semanticQueries || [],
-                relatedConcepts: result.relatedConcepts || [],
-                confidence: result.confidence || 0.7
-            };
-        }
-        catch (error) {
-            this.logger.error(`Error expanding query: ${error.message}`);
-            return {
-                originalQuery: query,
-                expandedQueries: [`${query} guide`, `${query} tutorial`, `${query} examples`],
-                semanticQueries: [`how to understand ${query}`, `learn about ${query}`],
-                relatedConcepts: [`${query} basics`, `${query} fundamentals`],
-                confidence: 0.5
-            };
-        }
-    }
-    async generateSearchParameters(topic, intent, keyThemes = []) {
-        try {
-            const contentTypes = this.mapIntentToContentType(intent);
-            const queryExpansion = await this.expandQuery(topic);
-            return {
-                includeDomains: [],
-                excludeDomains: ['pinterest.com', 'quora.com'],
-                contentTypes,
-                filters: {
-                    recency: intent === 'informational' ? 'last_year' : 'last_month',
-                    contentTypes,
-                    minLength: '500'
-                },
-                semanticBoost: true,
-                timeframe: intent === 'informational' ? 'any' : 'recent',
-                expandedQueries: queryExpansion.expandedQueries,
-                semanticQueries: queryExpansion.semanticQueries
-            };
-        }
-        catch (error) {
-            this.logger.warn(`Failed to generate search parameters: ${error.message}`);
-            return {
-                includeDomains: [],
-                excludeDomains: ['pinterest.com', 'quora.com'],
-                contentTypes: this.mapIntentToContentType(intent),
-                timeframe: 'recent',
-                filters: {
-                    recency: 'recent',
-                    contentTypes: this.mapIntentToContentType(intent),
-                    minLength: '600'
-                },
-                semanticBoost: true,
-                expandedQueries: [],
-                semanticQueries: []
-            };
-        }
-    }
-    async generateSearchParametersForSegment(topic, intent, segment, keyThemes = []) {
-        try {
-            const contentTypes = this.mapIntentToContentType(intent);
-            const queryExpansion = await this.expandQuery(topic);
-            const minLength = segment === 'b2b' ? '1500' : '800';
-            const timeframe = segment === 'b2b' ?
-                (intent === 'informational' ? 'any' : 'last_year') :
-                (intent === 'informational' ? 'last_year' : 'last_month');
-            return {
-                includeDomains: [],
-                excludeDomains: ['pinterest.com', 'quora.com'],
-                contentTypes,
-                filters: {
-                    recency: segment === 'b2b' ? 'last_year' : 'last_month',
-                    contentTypes,
-                    minLength
-                },
-                semanticBoost: true,
-                timeframe,
-                expandedQueries: queryExpansion.expandedQueries,
-                semanticQueries: queryExpansion.semanticQueries
-            };
-        }
-        catch (error) {
-            this.logger.warn(`Failed to generate segment-specific search parameters: ${error.message}`);
-            return {
-                includeDomains: [],
-                excludeDomains: ['pinterest.com', 'quora.com'],
-                contentTypes: this.mapIntentToContentType(intent),
-                timeframe: segment === 'b2b' ? 'any' : 'recent',
-                filters: {
-                    recency: segment === 'b2b' ? 'last_year' : 'recent',
-                    contentTypes: this.mapIntentToContentType(intent),
-                    minLength: segment === 'b2b' ? '1500' : '800'
-                },
-                semanticBoost: true,
-                expandedQueries: [],
-                semanticQueries: []
-            };
-        }
-    }
-    async performSemanticSearch(query, options = {}) {
-        try {
-            this.logger.log(`Performing semantic search for: ${query}`);
-            if (!this.searchEndpoint || !this.searchKey) {
-                this.logger.warn('Azure AI Search not configured. Returning empty results.');
+                const searchUrl = `${this.searchEndpoint}/indexes/${this.searchIndexName}/docs/search?api-version=2023-07-01-Preview`;
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'api-key': this.searchKey
+                };
+                const searchBody = {
+                    search: query,
+                    queryType: 'semantic',
+                    semanticConfiguration: 'default',
+                    top: (options === null || options === void 0 ? void 0 : options.top) || 10,
+                    queryLanguage: (options === null || options === void 0 ? void 0 : options.queryLanguage) || 'en-us',
+                    filter: (options === null || options === void 0 ? void 0 : options.filter) || '',
+                    select: 'title,url,content,description,name'
+                };
+                const response = await axios_1.default.post(searchUrl, searchBody, { headers });
+                const results = response.data.value.map(item => ({
+                    title: item.title || item.name || '',
+                    url: item.url || '',
+                    snippet: item.content || item.description || '',
+                    score: item['@search.score'] || 0
+                }));
                 return {
                     query,
-                    results: [],
-                    totalResults: 0,
-                    executionTime: 0
+                    results,
+                    totalResults: response.data['@odata.count'] || results.length,
+                    executionTime: response.data['@search.latency'] || 0
                 };
-            }
-            const searchResults = await this.azureAIService.performSearch(query, Object.assign(Object.assign({}, options), { searchEndpoint: this.searchEndpoint, searchKey: this.searchKey, indexName: this.searchIndexName }));
-            return searchResults;
+            }, 1800);
         }
         catch (error) {
-            this.logger.error(`Error performing semantic search: ${error.message}`);
+            this.logger.warn(`Semantic search failed: ${error.message}`);
             return {
                 query,
                 results: [],
@@ -597,257 +437,9 @@ exports.QueryIntentAnalyzerService = QueryIntentAnalyzerService = QueryIntentAna
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [config_1.ConfigService,
         azure_ai_service_1.AzureAIService,
+        redis_cache_service_1.RedisCacheService,
         intentClassifier_1.IntentClassifier,
         queryGenerator_1.QueryGenerator,
         searchParameterGenerator_1.SearchParameterGenerator])
 ], QueryIntentAnalyzerService);
-try {
-    const contentTypes = this.mapIntentToContentType(intent);
-    const queryExpansion = await this.expandQuery(topic);
-    return {
-        includeDomains: [],
-        excludeDomains: ['pinterest.com', 'quora.com'],
-        contentTypes,
-        filters: {
-            recency: intent === 'informational' ? 'last_year' : 'last_month',
-            contentTypes,
-            minLength: '500'
-        },
-        semanticBoost: true,
-        timeframe: intent === 'informational' ? 'any' : 'recent',
-        expandedQueries: queryExpansion.expandedQueries,
-        semanticQueries: queryExpansion.semanticQueries
-    };
-}
-catch (error) {
-    this.logger.warn(`Failed to generate search parameters: ${error.message}`);
-    return {
-        includeDomains: [],
-        excludeDomains: ['pinterest.com', 'quora.com'],
-        contentTypes: this.mapIntentToContentType(intent),
-        timeframe: 'recent',
-        filters: {
-            recency: 'recent',
-            contentTypes: this.mapIntentToContentType(intent),
-            minLength: '600'
-        }
-    };
-}
-async;
-expandQuery(query, string);
-Promise < QueryExpansionResult > {
-    try: {
-        this: .logger.log(`Expanding query: ${query}`),
-        const: prompt = `You are a query expansion expert. For the given topic or query, generate:
-      1. Five expanded queries that are variations of the original query with different phrasings
-      2. Five semantic queries that capture the same intent but use different terminology
-      3. Five related concepts that are relevant to the query topic
-      
-      Return a valid JSON object with the following structure:
-      {
-        "expandedQueries": ["array of expanded queries"],
-        "semanticQueries": ["array of semantic queries"],
-        "relatedConcepts": ["array of related concepts"],
-        "confidence": decimal between 0-1
-      }
-      
-      Original query: "${query}"
-      Return only valid JSON.`,
-        const: completion = await this.azureAIService.generateCompletion(prompt, {
-            deploymentName: this.aiFoundryDeploymentName,
-            temperature: 0.5,
-            maxTokens: 800
-        }),
-        const: responseText = await this.azureAIService.getCompletion(completion),
-        const: jsonMatch = responseText.match(/\{[\s\S]*\}/),
-        let, jsonResponse,
-        if(jsonMatch) {
-            jsonResponse = JSON.parse(jsonMatch[0]);
-        }, else: {
-            this: .logger.warn(`Failed to parse JSON from query expansion response. Using default expansion.`),
-            jsonResponse = this.createDefaultQueryExpansion(query)
-        },
-        const: result, QueryExpansionResult = {
-            originalQuery: query,
-            expandedQueries: jsonResponse.expandedQueries || [],
-            semanticQueries: jsonResponse.semanticQueries || [],
-            relatedConcepts: jsonResponse.relatedConcepts || [],
-            confidence: jsonResponse.confidence || 0.7
-        },
-        this: .logger.log(`Query expansion complete for: ${query}`),
-        return: result
-    }, catch(error) {
-        this.logger.error(`Error expanding query: ${error.message}`);
-        return this.createDefaultQueryExpansion(query);
-    }
-};
-createDefaultQueryExpansion(query, string);
-QueryExpansionResult;
-{
-    return {
-        originalQuery: query,
-        expandedQueries: [
-            `${query} guide`,
-            `${query} tutorial`,
-            `how to ${query}`,
-            `${query} best practices`,
-            `${query} examples`
-        ],
-        semanticQueries: [
-            `learn about ${query}`,
-            `understanding ${query}`,
-            `${query} explained`,
-            `${query} overview`,
-            `${query} introduction`
-        ],
-        relatedConcepts: [
-            query,
-            `${query} tools`,
-            `${query} techniques`,
-            `${query} methods`,
-            `${query} strategies`
-        ],
-        confidence: 0.5
-    };
-}
-async;
-performSemanticSearch(query, string, options, any = {});
-Promise < SemanticSearchResult > {
-    try: {
-        this: .logger.log(`Performing semantic search for: ${query}`),
-        : .searchEndpoint || !this.searchKey
-    }
-};
-{
-    this.logger.warn('Azure AI Search not configured. Using simulated search results.');
-    return this.simulateSearchResults(query);
-}
-const startTime = Date.now();
-const searchUrl = `${this.searchEndpoint}/indexes/${this.searchIndexName}/docs/search?api-version=2023-11-01`;
-const searchPayload = {
-    search: query,
-    queryType: 'semantic',
-    semanticConfiguration: 'default',
-    top: options.top || 10,
-    select: options.select || 'title,url,content,snippet',
-    searchFields: options.searchFields || ['title', 'content'],
-    queryLanguage: options.queryLanguage || 'en-us',
-    captions: 'extractive',
-    answers: 'extractive',
-    filter: options.filter || ''
-};
-const response = await axios_1.default.post(searchUrl, searchPayload, {
-    headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.searchKey
-    }
-});
-const executionTime = Date.now() - startTime;
-const results = response.data.value.map(item => ({
-    title: item.title || '',
-    url: item.url || '',
-    snippet: item.snippet || item.content || '',
-    score: item['@search.score'] || 0
-}));
-return {
-    query,
-    results,
-    totalResults: response.data['@odata.count'] || results.length,
-    executionTime
-};
-try { }
-catch (error) {
-    this.logger.error(`Error performing semantic search: ${error.message}`);
-    return this.simulateSearchResults(query);
-}
-simulateSearchResults(query, string);
-SemanticSearchResult;
-{
-    return {
-        query,
-        results: [
-            {
-                title: `${query} - Comprehensive Guide`,
-                url: `https://example.com/${query.toLowerCase().replace(/\s+/g, '-')}-guide`,
-                snippet: `This comprehensive guide covers everything you need to know about ${query}. Learn the fundamentals, advanced techniques, and best practices.`,
-                score: 0.95
-            },
-            {
-                title: `Understanding ${query} - Tutorial`,
-                url: `https://example.com/tutorials/${query.toLowerCase().replace(/\s+/g, '-')}`,
-                snippet: `Step-by-step tutorial on ${query}. Follow along with practical examples and code samples to master the concepts.`,
-                score: 0.85
-            },
-            {
-                title: `${query} Best Practices`,
-                url: `https://example.com/best-practices/${query.toLowerCase().replace(/\s+/g, '-')}`,
-                snippet: `Learn the industry-standard best practices for ${query}. Avoid common pitfalls and optimize your approach.`,
-                score: 0.75
-            }
-        ],
-        totalResults: 3,
-        executionTime: 50
-    };
-}
-getStrategyTemplate(intent, string, segment, 'b2b' | 'b2c');
-any;
-{
-    if (segment === 'b2b') {
-        return {
-            structure: [
-                'Executive Summary',
-                'Industry Context',
-                'Challenge Analysis',
-                'Solution Framework',
-                'Implementation Guide',
-                'Case Examples',
-                'ROI Analysis',
-                'Next Steps'
-            ],
-            tonality: 'Professional, authoritative, data-driven, strategic',
-            contentElements: ['Industry statistics', 'Technical specifications', 'Process diagrams', 'ROI calculators', 'Expert quotes'],
-            citationStrategy: 'Academic and industry research, technical documentation, case studies',
-            llmOptimizations: ['Comprehensive topic coverage', 'Technical accuracy', 'Industry terminology', 'Problem-solution framework']
-        };
-    }
-    else {
-        return {
-            structure: [
-                'Engaging Hook',
-                'Relatable Problem',
-                'Solution Introduction',
-                'Benefits Overview',
-                'How-To Guide',
-                'Success Stories',
-                'Emotional Appeal',
-                'Call to Action'
-            ],
-            tonality: 'Conversational, empathetic, engaging, inspiring',
-            contentElements: ['Personal stories', 'Visual elements', 'Step-by-step guides', 'Before/after scenarios', 'Social proof'],
-            citationStrategy: 'Consumer testimonials, product reviews, lifestyle publications, expert opinions',
-            llmOptimizations: ['Question-answer format', 'Emotional engagement', 'Benefits focus', 'Relatable examples']
-        };
-    }
-}
-getDefaultApproachBySegment(intent, string, segment, Segment);
-string;
-{
-    const approaches = {
-        b2b: {
-            'informational': 'Develop in-depth, authoritative content that clearly addresses business pain points and provides actionable insights',
-            'commercial': 'Create solution-focused content that highlights ROI, scalability, and integration with existing business processes',
-            'navigational': 'Provide clear, structured information architecture with easy paths to product specifications and technical documentation',
-            'transactional': 'Develop streamlined content that facilitates purchasing decisions with clear pricing models and case studies',
-            'comparison': 'Create detailed comparison frameworks that evaluate solutions based on business-critical features and scalability'
-        },
-        b2c: {
-            'informational': 'Create accessible, engaging content that answers common questions and provides value without technical jargon',
-            'commercial': 'Develop persuasive content that emphasizes benefits, lifestyle improvements, and addresses personal pain points',
-            'navigational': 'Create intuitive guides and visual navigation that helps users find relevant products and information quickly',
-            'transactional': 'Develop content that builds trust and simplifies the purchase process with clear CTAs and testimonials',
-            'comparison': 'Create balanced comparison content that helps consumers make confident decisions based on personal needs'
-        }
-    };
-    return approaches[segment][intent] || 'Develop comprehensive content with clear value proposition and actionable insights';
-}
 //# sourceMappingURL=query-intent-analyzer.service.js.map

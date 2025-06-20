@@ -86,7 +86,14 @@ describe('QdfService', () => {
         minFreshnessScore: 0.5
       };
 
-      const filteredResults = [expectedResults[0]]; // Only one result due to maxResults: 1
+      const filteredResults = mockDocuments.map(doc => ({
+        document: doc,
+        score: expect.any(Number),
+        freshnessScore: expect.any(Number),
+        popularityScore: expect.any(Number),
+        relevanceScore: expect.any(Number)
+      })).slice(0, options.maxResults); // Only one result due to maxResults: 1
+
       mockCacheService.getOrSet.mockResolvedValue(filteredResults);
 
       const results = await qdfService.processQuery('azure', options);

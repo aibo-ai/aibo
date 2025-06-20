@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.env.local
+.DS_Store
+*.log
+test-*.js
+direct-test.js
+function-app.zip
+temp-settings.json
+local.settings.json
+.vscode
+.idea

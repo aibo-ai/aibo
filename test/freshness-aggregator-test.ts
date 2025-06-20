@@ -30,25 +30,27 @@ const TEST_OPTIONS: FreshnessSearchParameters = {
   qdfEnabled: true
 };
 
-// Initialize config service
-const configService = new ConfigService();
+// Mock ConfigService for testing
+const mockConfigService = {
+  get: (key: string) => process.env[key]
+} as any;
 
-// Initialize all API clients
+// Initialize API clients with mock ConfigService
 const clients = {
-  serp: new SerpApiClient(process.env.SERP_API_KEY || ''),
+  serp: new SerpApiClient(mockConfigService),
   twitter: new TwitterApiClient(
-    process.env.X_API_KEY || '',
-    process.env.X_API_SECRET || '',
-    process.env.X_BEARER_TOKEN || ''
+    mockConfigService.get('X_API_KEY'),
+    mockConfigService.get('X_API_SECRET'),
+    mockConfigService.get('X_BEARER_TOKEN')
   ),
-  news: new NewsApiClient(process.env.NEWS_API_KEY || ''),
-  mediastack: new MediastackApiClient(process.env.MEDIASTACK_API_KEY || ''),
-  socialSearcher: new SocialSearcherClient(process.env.SOCIAL_SEARCHER_API_KEY || ''),
-  exa: new ExaApiClient(process.env.EXA_API_KEY || '')
+  news: new NewsApiClient(mockConfigService),
+  mediastack: new MediastackApiClient(mockConfigService),
+  socialSearcher: new SocialSearcherClient(mockConfigService),
+  exa: new ExaApiClient(mockConfigService)
 };
 
 // Initialize the Freshness Aggregator service
-const freshnessService = new FreshnessAggregatorService(configService);
+const freshnessService = new FreshnessAggregatorService(mockConfigService);
 
 // Manually set the API clients for testing
 Object.assign(freshnessService, clients);
@@ -60,7 +62,7 @@ async function testApiClients() {
   // Test SERP API
   try {
     console.log('\n1. Testing SERP API...');
-    const serpResults = await clients.serp.search(TEST_QUERY, { num: 2 });
+    const serpResults = await clients.serp.search(TEST_QUERY, { limit: 2 });
     console.log(`✅ SERP API: Found ${serpResults.length} results`);
     console.log('   First result:', {
       title: serpResults[0]?.title?.substring(0, 50) + '...',

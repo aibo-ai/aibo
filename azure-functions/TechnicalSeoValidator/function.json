@@ -8,12 +8,12 @@
       "methods": [
         "post"
       ],
-      "route": "seo-validator"
+      "route": "validateTechnicalSeo"
     },
     {
       "type": "http",
       "direction": "out",
-      "name": "res"
+      "name": "$return"
     }
   ],
   "scriptFile": "../dist/TechnicalSeoValidator/index.js"

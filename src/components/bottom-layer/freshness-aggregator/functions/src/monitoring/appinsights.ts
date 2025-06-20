@@ -110,6 +110,7 @@ export function trackDependency(
       data,
       duration,
       success,
+      resultCode: success ? 200 : 500, 
       properties
     });
   }
@@ -131,7 +132,7 @@ export function trackRequest(
       name,
       url,
       duration,
-      responseCode,
+      resultCode: responseCode, 
       success,
       properties
     });

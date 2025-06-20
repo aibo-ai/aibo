@@ -1,0 +1,38 @@
+apiVersion: 2021-10-01
+location: eastus
+name: ca-seo-validator-container
+properties:
+  containers:
+  - name: technical-seo-validator
+    properties:
+      image: contentarchitectacr.azurecr.io/technical-seo-validator:latest
+      resources:
+        requests:
+          cpu: 2
+          memoryInGb: 4
+      ports:
+      - port: 8080
+        protocol: TCP
+      environmentVariables:
+      - name: NODE_ENV
+        value: production
+      - name: PORT
+        value: 8080
+      - name: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
+      - name: PUPPETEER_EXECUTABLE_PATH
+        value: /root/.cache/puppeteer/chrome/linux-*/chrome-linux64/chrome
+  osType: Linux
+  restartPolicy: OnFailure
+  ipAddress:
+    type: Public
+    ports:
+    - protocol: TCP
+      port: 8080
+    dnsNameLabel: ca-seo-validator
+  imageRegistryCredentials:
+  - server: contentarchitectacr.azurecr.io
+    username: contentarchitectacr
+tags:
+  service: technical-seo-validator
+  environment: production

@@ -4,7 +4,7 @@ import { OrchestratorModule } from './components/orchestrator/orchestrator.modul
 import { BottomLayerModule } from './components/bottom-layer/bottom-layer.module';
 import { MiddleLayerModule } from './components/middle-layer/middle-layer.module';
 import { TopLayerModule } from './components/top-layer/top-layer.module';
-import { TechnicalSeoValidatorModule } from './components/bottom-layer/technical-seo-validator.module';
+import { TechnicalSeoValidatorModule } from './modules/technical-seo-validator/technical-seo-validator.module';
 // TODO: Create or import these modules when implementing user and API integration features
 // import { ApiIntegrationModule } from './components/api-integration/api-integration.module';
 // import { UserModule } from './components/user/user.module';

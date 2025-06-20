@@ -16,7 +16,7 @@ exports.BottomLayerController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const query_intent_analyzer_service_1 = require("../services/query-intent-analyzer.service");
-const freshness_aggregator_service_1 = require("../services/freshness-aggregator.service");
+const freshness_aggregator_service_1 = require("../freshness-aggregator/services/freshness-aggregator.service");
 const content_chunker_service_1 = require("../services/content-chunker.service");
 const keyword_topic_analyzer_service_1 = require("../services/keyword-topic-analyzer.service");
 let BottomLayerController = class BottomLayerController {
@@ -30,16 +30,35 @@ let BottomLayerController = class BottomLayerController {
         return this.queryIntentAnalyzerService.analyzeIntent(userInput, segment);
     }
     async generateContentStrategy(intentAnalysis, segment) {
-        return this.queryIntentAnalyzerService.createContentStrategy(intentAnalysis, segment);
+        return this.queryIntentAnalyzerService.analyzeIntent({ topic: intentAnalysis.topic, context: intentAnalysis.context }, segment);
     }
     async getFreshContent(topic, segment) {
-        return this.freshnessAggregatorService.aggregateFreshContent(topic, segment);
+        const params = {
+            query: topic,
+            limit: 10,
+            contentTypes: undefined,
+            timeframe: undefined,
+            language: 'en',
+            region: 'us',
+            skipCache: false
+        };
+        return this.freshnessAggregatorService.aggregateFreshContent(params);
     }
     async calculateFreshness(content, segment) {
-        return this.freshnessAggregatorService.calculateFreshnessScore(content, segment);
+        const publishedDate = new Date(content.publishedAt || content.publishedDate || new Date());
+        const now = new Date();
+        const ageInHours = (now.getTime() - publishedDate.getTime()) / (1000 * 60 * 60);
+        const freshnessScore = Math.max(0, Math.min(1, 1 - (ageInHours / 168)));
+        return {
+            score: freshnessScore,
+            age: ageInHours,
+            recency: freshnessScore > 0.7 ? 'VERY_RECENT' :
+                freshnessScore > 0.4 ? 'RECENT' : 'NOT_RECENT'
+        };
     }
     async enrichWithFreshness(params) {
-        return this.freshnessAggregatorService.enrichWithFreshnessIndicators(params.content, params.freshnessScore);
+        return Object.assign(Object.assign({}, params.content), { freshnessScore: params.freshnessScore, freshnessIndicator: params.freshnessScore > 0.7 ? 'Fresh' :
+                params.freshnessScore > 0.4 ? 'Moderately Fresh' : 'Stale' });
     }
     async chunkContent(params) {
         return this.contentChunkerService.chunkContent(params.content, params.chunkType);

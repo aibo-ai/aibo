@@ -41,7 +41,8 @@ export class CacheService {
         defaultTtl: this.defaultTtl
       });
     } catch (error) {
-      throw new Error(`Failed to initialize cache: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize cache: ${errorMessage}`);
     }
   }
 
@@ -68,10 +69,11 @@ export class CacheService {
 
       return resource.value as T;
     } catch (error) {
-      if (error.code === 404) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 404) {
         return null;
       }
-      throw new Error(`Failed to get cache entry: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get cache entry: ${errorMessage}`);
     }
   }
 
@@ -91,7 +93,8 @@ export class CacheService {
 
       await this.container.items.upsert(cacheEntry);
     } catch (error) {
-      throw new Error(`Failed to set cache entry: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to set cache entry: ${errorMessage}`);
     }
   }
 
@@ -102,8 +105,9 @@ export class CacheService {
     try {
       await this.container.item(key, key).delete();
     } catch (error) {
-      if (error.code !== 404) {
-        throw new Error(`Failed to invalidate cache entry: ${error.message}`);
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code !== 404) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to invalidate cache entry: ${errorMessage}`);
       }
     }
   }
@@ -131,7 +135,8 @@ export class CacheService {
       
       return value;
     } catch (error) {
-      throw new Error(`Failed to getOrSet cache entry: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to getOrSet cache entry: ${errorMessage}`);
     }
   }
 
@@ -150,7 +155,8 @@ export class CacheService {
 
       await Promise.all(deletePromises);
     } catch (error) {
-      throw new Error(`Failed to clear cache: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to clear cache: ${errorMessage}`);
     }
   }
 
@@ -171,7 +177,8 @@ export class CacheService {
         containerSize: "Unknown" // Cosmos doesn't provide easy size metrics
       };
     } catch (error) {
-      throw new Error(`Failed to get cache stats: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get cache stats: ${errorMessage}`);
     }
   }
 }

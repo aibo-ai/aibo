@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "outDir": "./dist-test",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "baseUrl": "../../",
+    "paths": {
+      "@common/*": ["src/common/*"]
+    }
+  },
+  "include": [
+    "direct-test.ts",
+    "../../src/common/interfaces/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

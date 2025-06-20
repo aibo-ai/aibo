@@ -22,7 +22,7 @@
   "dependencies": {
     "@azure/ai-form-recognizer": "^4.0.0",
     "@azure/core-rest-pipeline": "^1.10.0",
-    "@azure/cosmos": "^3.17.3",
+    "@azure/cosmos": "^4.4.1",
     "@azure/data-tables": "^13.2.2",
     "@azure/functions": "^4.7.3-beta.0",
     "@azure/identity": "^3.4.2",
@@ -47,7 +47,7 @@
     "ioredis": "^5.3.2",
     "newsapi": "^2.4.1",
     "puppeteer": "^19.7.0",
-    "redis": "^4.6.7",
+    "redis": "^4.7.1",
     "reflect-metadata": "^0.1.13",
     "rehype-parse": "^8.0.5",
     "remark-parse": "^10.0.1",

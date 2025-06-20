@@ -27,7 +27,7 @@ let SemanticHtmlAnalyzerService = SemanticHtmlAnalyzerService_1 = class Semantic
         try {
             const issues = [];
             const ast = await (0, unified_1.unified)()
-                .use(rehype_parse_1.parse, { fragment: false })
+                .use(rehype_parse_1.default, { fragment: false })
                 .parse(html);
             const headingIssues = this.checkHeadingStructure(ast);
             issues.push(...headingIssues);

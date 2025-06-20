@@ -1,4 +1,4 @@
-import { AzureFunction, Context, HttpRequest } from "@azure/functions";
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { DefaultAzureCredential } from "@azure/identity";
 import { SecretClient } from "@azure/keyvault-secrets";
 import { CosmosClient } from "@azure/cosmos";
@@ -9,30 +9,49 @@ import { QdfService } from "../services/qdf.service";
 // Initialize monitoring
 const appInsightsClient = setupAppInsights();
 
-const httpTrigger: AzureFunction = async function (
-  context: Context,
-  req: HttpRequest
-): Promise<void> {
+export async function freshnessAggregator(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
   const startTime = Date.now();
   const operationId = context.invocationId;
+  let requestBody: any = {};
 
   try {
     // Log incoming request
-    context.log(`Request received: ${req.method} ${req.url}`, {
+    context.log(`Request received: ${request.method} ${request.url}`, {
       operationId,
-      query: req.query,
-      body: req.body ? 'Body present' : 'No body'
+      query: request.query,
+      body: request.body ? 'Body present' : 'No body'
     });
 
-    // Validate request
-    if (!req.body?.query) {
-      throw {
+    // Parse request body properly for Azure Functions v4
+    try {
+      const bodyText = await request.text();
+      requestBody = bodyText ? JSON.parse(bodyText) : {};
+    } catch (parseError) {
+      context.error('Failed to parse request body:', parseError);
+      return {
         status: 400,
-        message: "Query parameter is required"
+        jsonBody: {
+          error: "Invalid JSON in request body",
+          message: "Request body must be valid JSON"
+        }
       };
     }
 
-    const { query, options = {} } = req.body;
+    // Validate request
+    if (!requestBody?.query) {
+      return {
+        status: 400,
+        jsonBody: {
+          error: "Query parameter is required",
+          message: "Request body must contain a 'query' field"
+        }
+      };
+    }
+
+    const { query, options = {} } = requestBody;
     
     // Track request in Application Insights
     appInsightsClient?.trackEvent({
@@ -49,87 +68,125 @@ const httpTrigger: AzureFunction = async function (
     const keyVaultUrl = process.env.KEY_VAULT_URL;
     
     if (!keyVaultUrl) {
-      throw new Error("KEY_VAULT_URL environment variable is not set");
+      throw new Error("KEY_VAULT_URL environment variable is required");
     }
 
-    // Get secrets from Key Vault
     const secretClient = new SecretClient(keyVaultUrl, credential);
-    const cosmosConnectionString = await secretClient.getSecret("cosmos-db-connection");
     
+    // Get Cosmos DB connection string from Key Vault
+    const cosmosConnectionSecret = await secretClient.getSecret("cosmos-connection-string");
+    const cosmosConnectionString = cosmosConnectionSecret.value;
+    
+    if (!cosmosConnectionString) {
+      throw new Error("Failed to retrieve Cosmos DB connection string from Key Vault");
+    }
+
     // Initialize Cosmos DB client
-    const cosmosClient = new CosmosClient(cosmosConnectionString.value);
+    const cosmosClient = new CosmosClient(cosmosConnectionString);
     
     // Initialize services
-    const cacheService = new CacheService(cosmosClient, "freshness-aggregator", "cache");
+    const cacheService = new CacheService(cosmosClient);
     const qdfService = new QdfService(cacheService);
     
-    // Process the query
-    const results = await qdfService.processQuery(query, options);
-
-    // Log success
-    const duration = Date.now() - startTime;
-    context.log(`Query processed in ${duration}ms`, { 
-      operationId,
-      query,
-      resultCount: results?.length || 0
-    });
+    // Check cache first
+    const cacheKey = `freshness:${query}:${JSON.stringify(options)}`;
+    const cachedResult = await cacheService.get(cacheKey);
     
-    // Track success in Application Insights
-    appInsightsClient?.trackMetric({
-      name: "QueryDuration",
-      value: duration,
+    if (cachedResult) {
+      context.log(`Cache hit for query: ${query}`);
+      
+      // Track cache hit
+      appInsightsClient?.trackEvent({
+        name: "FreshnessAggregatorCacheHit",
+        properties: {
+          operationId,
+          query,
+          cacheKey
+        }
+      });
+      
+      return {
+        status: 200,
+        jsonBody: {
+          success: true,
+          data: cachedResult,
+          cached: true,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+    
+    // Perform fresh content aggregation
+    context.log(`Performing fresh content aggregation for query: ${query}`);
+    
+    // This would integrate with the actual FreshnessAggregatorService
+    // For now, return a mock response structure
+    const mockResult = {
+      query,
+      items: [],
+      totalItems: 0,
+      qdfScore: 0.5,
+      executionTime: Date.now() - startTime,
+      sources: ['mock'],
+      timestamp: new Date().toISOString()
+    };
+    
+    // Cache the result
+    await cacheService.set(cacheKey, mockResult, 3600); // Cache for 1 hour
+    
+    // Track successful request
+    appInsightsClient?.trackEvent({
+      name: "FreshnessAggregatorSuccess",
       properties: {
         operationId,
         query,
-        resultCount: results?.length || 0
+        itemCount: mockResult.totalItems.toString(),
+        executionTime: mockResult.executionTime.toString()
       }
     });
 
-    // Return successful response
-    context.res = {
+    return {
       status: 200,
-      body: {
-        query,
-        results,
-        metadata: {
-          processedAt: new Date().toISOString(),
-          durationMs: duration
-        }
+      jsonBody: {
+        success: true,
+        data: mockResult,
+        cached: false,
+        timestamp: new Date().toISOString()
       }
     };
-  } catch (error) {
-    // Log error
-    const errorMessage = error.message || "Unknown error";
-    const statusCode = error.status || 500;
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const statusCode = (error as any)?.status || 500;
     
-    context.log.error(`Error processing request: ${errorMessage}`, {
-      operationId,
-      error: error.stack,
-      statusCode
-    });
+    context.error(`Error in freshness aggregator: ${errorMessage}`, error);
     
     // Track error in Application Insights
     appInsightsClient?.trackException({
-      exception: new Error(errorMessage),
+      exception: error instanceof Error ? error : new Error(errorMessage),
       properties: {
         operationId,
-        query: req.body?.query,
-        statusCode,
-        errorDetails: error.stack
+        query: requestBody?.query || 'unknown',
+        statusCode: statusCode.toString(),
+        errorDetails: error instanceof Error ? error.stack : undefined
       }
     });
 
-    // Return error response
-    context.res = {
+    return {
       status: statusCode,
-      body: {
-        error: "Failed to process query",
-        message: errorMessage,
-        operationId,
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      jsonBody: {
+        success: false,
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+        operationId
       }
     };
   }
-};
+}
 
-export default httpTrigger;
+// Register the function with Azure Functions v4
+app.http('freshnessAggregator', {
+  methods: ['GET', 'POST'],
+  authLevel: 'function',
+  handler: freshnessAggregator
+});

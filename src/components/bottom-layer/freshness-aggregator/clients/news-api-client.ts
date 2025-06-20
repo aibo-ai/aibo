@@ -200,19 +200,28 @@ export class NewsApiService {
    * @returns Standardized news articles
    */
   private mapArticles(articles: NewsApiArticle[]): NewsArticle[] {
-    return articles
-      .filter(article => article.title && article.url)
-      .map((article, index) => ({
-        id: `newsapi_${Date.now()}_${index}`,
-        title: article.title,
-        description: article.description || undefined,
-        content: article.content || undefined,
-        url: article.url,
-        source: article.source.name || 'Unknown',
-        author: article.author || undefined,
-        publishedDate: article.publishedAt,
-        imageUrl: article.urlToImage || undefined,
-        relevanceScore: 0.8 // Default relevance score
-      }));
+    return articles.map((article, index) => ({
+      id: article.url || `news_${Date.now()}_${index}`,
+      title: article.title || 'Untitled',
+      description: article.description || '',
+      content: article.content || '',
+      url: article.url || '',
+      source: article.source?.name || 'Unknown',
+      author: article.author || '',
+      publishedDate: article.publishedAt || new Date().toISOString(),
+      imageUrl: article.urlToImage || '',
+      relevanceScore: 1.0 - (index * 0.1) // Simple relevance scoring
+    }));
+  }
+
+  /**
+   * Check if the client is properly configured
+   * @returns True if API key is available
+   */
+  isConfigured(): boolean {
+    return !!this.apiKey && this.apiKey.length > 0;
   }
 }
+
+// Export alias for compatibility
+export const NewsApiClient = NewsApiService;

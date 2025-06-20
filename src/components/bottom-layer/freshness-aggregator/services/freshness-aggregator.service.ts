@@ -1,16 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CosmosClient, Container, Database, SqlQuerySpec } from '@azure/cosmos';
+import { CosmosClient, Container, Database } from '@azure/cosmos';
 import { v4 as uuidv4 } from 'uuid';
 
 import { 
-  NewsApiClient, 
   SerpApiClient, 
   TwitterApiClient, 
   MediastackApiClient, 
-  SocialSearcherClient, 
-  ExaApiClient 
+  SocialSearcherClient 
 } from '../clients';
+
+import { NewsApiService } from '../clients/news-api-client';
+import { ExaApiClient } from '../clients/exa-api-client';
 
 import {
   ContentItem,
@@ -37,11 +38,11 @@ import { FreshnessUtils } from './freshness-utils';
 export class FreshnessAggregatorService {
   private readonly logger = new Logger(FreshnessAggregatorService.name);
   private cosmosClient: CosmosClient;
-  private database: Database;
+  private contentDatabase: Database;
   private contentContainer: Container;
   
   // API clients
-  private newsApiClient: NewsApiClient;
+  private newsApiClient: NewsApiService;
   private serpApiClient: SerpApiClient;
   private twitterApiClient: TwitterApiClient;
   private mediastackApiClient: MediastackApiClient;
@@ -49,13 +50,20 @@ export class FreshnessAggregatorService {
   private exaApiClient: ExaApiClient;
   
   // Freshness thresholds in hours
-  private readonly freshnessThresholds = {
+  private readonly freshnessThresholds: Record<ContentType, number> = {
     [ContentType.NEWS]: 24,        // News content is fresh for 24 hours
+    [ContentType.WEB]: 168,        // Web content is fresh for 7 days
     [ContentType.SOCIAL]: 6,       // Social content is fresh for 6 hours
     [ContentType.BLOG]: 72,        // Blog content is fresh for 3 days
     [ContentType.FORUM]: 48,       // Forum content is fresh for 2 days
-    [ContentType.ACADEMIC]: 720,   // Academic content is fresh for 30 days
+    [ContentType.VIDEO]: 168,      // Video content is fresh for 7 days
+    [ContentType.PODCAST]: 168,    // Podcast content is fresh for 7 days
+    [ContentType.DOCUMENT]: 720,   // Document content is fresh for 30 days
+    [ContentType.WIKI]: 8760,      // Wiki content is fresh for 1 year
+    [ContentType.REVIEW]: 168,     // Review content is fresh for 7 days
+    [ContentType.COMMENT]: 24,     // Comment content is fresh for 24 hours
     [ContentType.SERP]: 168,       // SERP content is fresh for 7 days
+    [ContentType.ACADEMIC]: 720,   // Academic content is fresh for 30 days
     [ContentType.OTHER]: 168       // Other content is fresh for 7 days
   };
 
@@ -72,7 +80,7 @@ export class FreshnessAggregatorService {
       // Initialize NewsAPI client
       const newsApiKey = this.configService.get<string>('NEWSAPI_KEY');
       if (newsApiKey) {
-        this.newsApiClient = new NewsApiClient(newsApiKey);
+        this.newsApiClient = new NewsApiService(this.configService);
         this.logger.log('NewsAPI client initialized');
       }
       
@@ -92,28 +100,28 @@ export class FreshnessAggregatorService {
         this.logger.log('Twitter API client initialized');
       }
       
-      // Initialize Mediastack API client
+      // Initialize Mediastack API client  
       const mediastackApiKey = this.configService.get<string>('MEDIASTACK_API_KEY');
       if (mediastackApiKey) {
         this.mediastackApiClient = new MediastackApiClient(mediastackApiKey);
         this.logger.log('Mediastack API client initialized');
       }
       
-      // Initialize Social Searcher API client
+      // Initialize Social Searcher client
       const socialSearcherApiKey = this.configService.get<string>('SOCIAL_SEARCHER_API_KEY');
       if (socialSearcherApiKey) {
         this.socialSearcherClient = new SocialSearcherClient(socialSearcherApiKey);
-        this.logger.log('Social Searcher API client initialized');
+        this.logger.log('Social Searcher client initialized');
       }
       
       // Initialize Exa API client
       const exaApiKey = this.configService.get<string>('EXA_API_KEY');
       if (exaApiKey) {
-        this.exaApiClient = new ExaApiClient(exaApiKey);
+        this.exaApiClient = new ExaApiClient(this.configService);
         this.logger.log('Exa API client initialized');
       }
     } catch (error) {
-      this.logger.error(`Error initializing API clients: ${error.message}`);
+      this.logger.error('Error initializing API clients:', error);
     }
   }
 
@@ -140,10 +148,10 @@ export class FreshnessAggregatorService {
       
       // Create database if it doesn't exist
       const { database } = await this.cosmosClient.databases.createIfNotExists({ id: databaseId });
-      this.database = database;
+      this.contentDatabase = database;
       
       // Create container if it doesn't exist
-      const { container } = await this.database.containers.createIfNotExists({
+      const { container } = await this.contentDatabase.containers.createIfNotExists({
         id: containerId,
         partitionKey: { paths: ['/partitionKey'] },
         defaultTtl: 604800 // 7 days TTL by default
@@ -247,7 +255,7 @@ export class FreshnessAggregatorService {
       const cacheKey = this.createCacheKey(params);
       
       // Query for cached results
-      const querySpec: SqlQuerySpec = {
+      const querySpec = {
         query: 'SELECT * FROM c WHERE c.id = @id AND c.type = @type',
         parameters: [
           { name: '@id', value: cacheKey },
@@ -340,12 +348,67 @@ export class FreshnessAggregatorService {
   }
   
   /**
+   * Process web search results
+   * @param results Web search results
+   * @returns Processed content items
+   */
+  private processWebResults(results: any[]): ContentItem[] {
+    return results.map((result, index) => {
+      // Map result to content item
+      const contentItem: ContentItem = {
+        id: result.id || `web_${Date.now()}_${index}`,
+        title: result.title,
+        url: result.url,
+        source: result.source || result.domain || 'Unknown',
+        publishedAt: new Date(result.publishedDate || result.publishedAt || new Date()),
+        retrievedAt: new Date(),
+        contentType: ContentType.WEB,
+        snippet: result.snippet || result.description || '',
+        metadata: {
+          domain: result.domain,
+          relevanceScore: result.relevanceScore || 0.5
+        }
+      };
+      
+      return contentItem;
+    });
+  }
+
+  /**
+   * Process news articles from News API
+   * @param articles Raw news articles
+   * @returns Processed content items
+   */
+  private processNewsArticles(articles: any[]): ContentItem[] {
+    return articles.map((article, index) => {
+      // Map article to content item
+      const contentItem: ContentItem = {
+        id: article.id || `news_${Date.now()}_${index}`,
+        title: article.title,
+        url: article.url,
+        source: article.source,
+        publishedAt: new Date(article.publishedDate || article.publishedAt || new Date()),
+        retrievedAt: new Date(),
+        contentType: ContentType.NEWS,
+        snippet: article.description || '',
+        author: article.author,
+        imageUrl: article.imageUrl,
+        metadata: {
+          relevanceScore: article.relevanceScore || 0.5
+        }
+      };
+      
+      return contentItem;
+    });
+  }
+
+  /**
    * Collect news content from available news sources
    * @param params Search parameters
-   * @returns Array of news articles
+   * @returns Array of content items
    */
-  private async collectNewsContent(params: FreshnessSearchParameters): Promise<NewsArticle[]> {
-    const newsArticles: NewsArticle[] = [];
+  private async collectNewsContent(params: FreshnessSearchParameters): Promise<ContentItem[]> {
+    const newsArticles: any[] = [];
     const query = params.query;
     
     try {
@@ -375,29 +438,31 @@ export class FreshnessAggregatorService {
         }
       }
       
-      return newsArticles;
+      // Process news articles
+      const processedNewsArticles = this.processNewsArticles(newsArticles);
+      
+      return processedNewsArticles;
     } catch (error) {
       this.logger.error(`Error collecting news content: ${error.message}`);
       return [];
     }
   }
-  
+
   /**
-   * Collect web search results from available sources
+   * Collect web content from available web sources
    * @param params Search parameters
-   * @returns Array of web search results
+   * @returns Array of content items
    */
-  private async collectWebContent(params: FreshnessSearchParameters): Promise<WebSearchResult[]> {
-    const webResults: WebSearchResult[] = [];
+  private async collectWebContent(params: FreshnessSearchParameters): Promise<ContentItem[]> {
+    const webResults: any[] = [];
     const query = params.query;
     
     try {
       // Collect from SERP API if available
       if (this.serpApiClient?.isConfigured()) {
         const serpResults = await this.serpApiClient.search(query, {
-          hl: params.language || 'en',
-          gl: params.region || 'us',
-          num: params.limit || 20
+          language: params.language || 'en',
+          limit: params.limit || 20
         });
         
         if (serpResults?.length) {
@@ -407,10 +472,9 @@ export class FreshnessAggregatorService {
       
       // Collect from Exa API if available
       if (this.exaApiClient?.isConfigured()) {
-        const exaResults = await this.exaApiClient.searchRecent(query, {
-          numResults: params.limit || 20,
+        const exaResults = await this.exaApiClient.searchContent(query, {
           language: params.language || 'en',
-          daysAgo: 7 // Last week
+          numResults: params.limit || 20
         });
         
         if (exaResults?.length) {
@@ -418,13 +482,16 @@ export class FreshnessAggregatorService {
         }
       }
       
-      return webResults;
+      // Process web results
+      const processedWebResults = this.processWebResults(webResults);
+      
+      return processedWebResults;
     } catch (error) {
       this.logger.error(`Error collecting web content: ${error.message}`);
       return [];
     }
   }
-  
+
   /**
    * Collect social media content from available sources
    * @param params Search parameters

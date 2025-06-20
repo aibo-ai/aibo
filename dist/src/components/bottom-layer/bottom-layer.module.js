@@ -9,10 +9,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BottomLayerModule = void 0;
 const common_1 = require("@nestjs/common");
 const query_intent_analyzer_service_1 = require("./services/query-intent-analyzer.service");
-const freshness_aggregator_service_1 = require("./services/freshness-aggregator.service");
+const freshness_aggregator_service_1 = require("./freshness-aggregator/services/freshness-aggregator.service");
 const content_chunker_service_1 = require("./services/content-chunker.service");
 const keyword_topic_analyzer_service_1 = require("./services/keyword-topic-analyzer.service");
 const azure_data_persistence_service_1 = require("./services/azure-data-persistence.service");
+const intentClassifier_1 = require("./services/intentClassifier");
+const queryGenerator_1 = require("./services/queryGenerator");
+const searchParameterGenerator_1 = require("./services/searchParameterGenerator");
 const bottom_layer_controller_1 = require("./controllers/bottom-layer.controller");
 const technical_seo_validator_module_1 = require("./technical-seo-validator.module");
 const technical_seo_validator_controller_1 = require("./controllers/technical-seo-validator.controller");
@@ -29,6 +32,9 @@ exports.BottomLayerModule = BottomLayerModule = __decorate([
             content_chunker_service_1.ContentChunkerService,
             keyword_topic_analyzer_service_1.KeywordTopicAnalyzerService,
             azure_data_persistence_service_1.AzureDataPersistenceService,
+            intentClassifier_1.IntentClassifier,
+            queryGenerator_1.QueryGenerator,
+            searchParameterGenerator_1.SearchParameterGenerator,
         ],
         exports: [
             query_intent_analyzer_service_1.QueryIntentAnalyzerService,
@@ -36,6 +42,9 @@ exports.BottomLayerModule = BottomLayerModule = __decorate([
             content_chunker_service_1.ContentChunkerService,
             keyword_topic_analyzer_service_1.KeywordTopicAnalyzerService,
             azure_data_persistence_service_1.AzureDataPersistenceService,
+            intentClassifier_1.IntentClassifier,
+            queryGenerator_1.QueryGenerator,
+            searchParameterGenerator_1.SearchParameterGenerator,
         ],
     })
 ], BottomLayerModule);

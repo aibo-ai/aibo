@@ -1,79 +1,117 @@
-import { AzureFunction, Context, HttpRequest } from '@azure/functions';
-import { FreshnessAggregatorService } from '../services/freshness-aggregator.service';
-import { FreshnessSearchParameters, FreshnessAggregatorResponse } from '../models/content-models';
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { ConfigService } from '@nestjs/config';
+
+// Define interfaces locally to avoid import path issues
+interface FreshnessSearchParameters {
+  query: string;
+  limit?: number;
+  sortBy?: 'freshness' | 'relevance' | 'mixed';
+  contentTypes?: string[];
+  language?: string;
+  region?: string;
+  skipCache?: boolean;
+  timeframe?: {
+    startDate?: Date;
+    endDate?: Date;
+  };
+}
 
 /**
  * Azure Function to aggregate fresh content from multiple sources
  * This function is triggered by an HTTP request and returns aggregated content
  * with freshness scores based on the Query Deserves Freshness (QDF) algorithm.
  */
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+export async function aggregateFreshContent(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
   const startTime = Date.now();
-  context.log('Freshness Aggregator Function triggered');
   
   try {
-    // Initialize services
-    const configService = new ConfigService();
-    const freshnessAggregator = new FreshnessAggregatorService(configService);
+    context.log('Freshness Aggregator Function triggered');
     
-    // Extract search parameters from request
+    let requestBody: any = {};
+    
+    // Parse request body for Azure Functions v4
+    try {
+      const bodyText = await request.text();
+      requestBody = bodyText ? JSON.parse(bodyText) : {};
+    } catch (parseError) {
+      context.error('Failed to parse request body:', parseError);
+      return {
+        status: 400,
+        jsonBody: {
+          error: "Invalid JSON in request body"
+        }
+      };
+    }
+
+    // Extract search parameters from query string and request body
     const searchParams: FreshnessSearchParameters = {
-      query: req.query.query || req.body?.query,
-      limit: req.query.limit ? parseInt(req.query.limit) : (req.body?.limit || 20),
-      sortBy: req.query.sortBy || req.body?.sortBy || 'mixed',
-      contentTypes: req.query.contentTypes?.split(',') || req.body?.contentTypes,
-      language: req.query.language || req.body?.language || 'en',
-      region: req.query.region || req.body?.region,
-      skipCache: req.query.skipCache === 'true' || req.body?.skipCache === true,
+      query: request.query.get('query') || requestBody?.query,
+      limit: parseInt(request.query.get('limit') || requestBody?.limit || '20'),
+      sortBy: request.query.get('sortBy') as any || requestBody?.sortBy || 'mixed',
+      contentTypes: request.query.get('contentTypes')?.split(',') || requestBody?.contentTypes,
+      language: request.query.get('language') || requestBody?.language || 'en',
+      region: request.query.get('region') || requestBody?.region,
+      skipCache: request.query.get('skipCache') === 'true' || requestBody?.skipCache === true,
       timeframe: {
-        startDate: req.query.startDate ? new Date(req.query.startDate) : 
-                  (req.body?.startDate ? new Date(req.body.startDate) : undefined),
-        endDate: req.query.endDate ? new Date(req.query.endDate) : 
-                (req.body?.endDate ? new Date(req.body.endDate) : undefined)
+        startDate: request.query.get('startDate') ? new Date(request.query.get('startDate')!) :
+                  (requestBody?.startDate ? new Date(requestBody.startDate) : undefined),
+        endDate: request.query.get('endDate') ? new Date(request.query.get('endDate')!) :
+                (requestBody?.endDate ? new Date(requestBody.endDate) : undefined)
       }
     };
     
     // Validate required parameters
     if (!searchParams.query) {
-      context.res = {
+      return {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: {
+        jsonBody: {
           error: 'Missing required parameter: query',
           status: 400
         }
       };
-      return;
     }
-    
+
+    // Mock ConfigService for Azure Functions environment
+    const mockConfigService = {
+      get: (key: string) => process.env[key]
+    } as ConfigService;
+
+    // Initialize the service
+    const freshnessService = new (require('../services/freshness-aggregator.service').FreshnessAggregatorService)(mockConfigService);
+
     // Aggregate fresh content
-    const result = await freshnessAggregator.aggregateFreshContent(searchParams);
+    const result = await freshnessService.aggregateFreshContent(searchParams);
     
     // Return results
-    context.res = {
+    return {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: {
+      jsonBody: {
         data: result,
         executionTime: Date.now() - startTime
       }
     };
-  } catch (error) {
-    context.log.error(`Error in Freshness Aggregator: ${error.message}`);
-    context.log.error(error);
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    context.error('Error in Freshness Aggregator:', error);
     
     // Return error response
-    context.res = {
+    return {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: {
+      jsonBody: {
         error: 'Error aggregating fresh content',
-        message: error.message,
+        message: errorMessage,
         status: 500
       }
     };
   }
-};
+}
 
-export default httpTrigger;
+app.http('aggregateFreshContent', {
+  methods: ['GET', 'POST'],
+  authLevel: 'function',
+  handler: aggregateFreshContent
+});

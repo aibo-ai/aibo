@@ -79,14 +79,21 @@ export class FreshnessUtils {
       [RecencyCategory.OLDER]: 0
     };
     
-    // Calculate freshness scores for all items
-    const freshnessThresholds = {
-      [ContentType.NEWS]: 24,
-      [ContentType.SOCIAL]: 6,
-      [ContentType.BLOG]: 72,
-      [ContentType.FORUM]: 48,
-      [ContentType.ACADEMIC]: 720,
-      [ContentType.SERP]: 168,
+    // Default freshness thresholds in hours for each content type
+    const freshnessThresholds: Record<ContentType, number> = {
+      [ContentType.NEWS]: 2,
+      [ContentType.WEB]: 24,
+      [ContentType.SOCIAL]: 1,
+      [ContentType.BLOG]: 48,
+      [ContentType.FORUM]: 12,
+      [ContentType.VIDEO]: 72,
+      [ContentType.PODCAST]: 168,
+      [ContentType.DOCUMENT]: 720,
+      [ContentType.WIKI]: 720,
+      [ContentType.REVIEW]: 168,
+      [ContentType.COMMENT]: 6,
+      [ContentType.SERP]: 24,
+      [ContentType.ACADEMIC]: 8760,
       [ContentType.OTHER]: 168
     };
     
