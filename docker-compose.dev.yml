@@ -1,0 +1,318 @@
+# Docker Compose for Development Environment
+# Optimized for local development with hot reload and debugging
+
+version: '3.8'
+
+services:
+  # Development Application with Hot Reload
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: content-creation-platform:dev
+    container_name: content-platform-app-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Debug port
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/content_platform_dev
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=debug
+      - ENABLE_SWAGGER=true
+      - CORS_ORIGIN=http://localhost:3001
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - app-logs:/app/logs
+    networks:
+      - content-platform-dev
+    depends_on:
+      - postgres
+      - redis
+    command: npm run start:debug
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostgreSQL Database for Development
+  postgres:
+    image: postgres:15-alpine
+    container_name: content-platform-postgres-dev
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=content_platform_dev
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/init-dev-db.sql:/docker-entrypoint-initdb.d/init-dev-db.sql:ro
+    networks:
+      - content-platform-dev
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d content_platform_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for Development
+  redis:
+    image: redis:7-alpine
+    container_name: content-platform-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - content-platform-dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Development Server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: content-platform-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+      - REACT_APP_ENVIRONMENT=development
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - content-platform-dev
+    depends_on:
+      - app
+    command: npm start
+
+  # Mailhog for Email Testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: content-platform-mailhog-dev
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - content-platform-dev
+
+  # MinIO for S3-compatible Storage Testing
+  minio:
+    image: minio/minio:latest
+    container_name: content-platform-minio-dev
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-dev-data:/data
+    networks:
+      - content-platform-dev
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Adminer for Database Management
+  adminer:
+    image: adminer:latest
+    container_name: content-platform-adminer-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - content-platform-dev
+    depends_on:
+      - postgres
+
+  # Redis Commander for Redis Management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: content-platform-redis-commander-dev
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    networks:
+      - content-platform-dev
+    depends_on:
+      - redis
+
+  # Prometheus for Development Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: content-platform-prometheus-dev
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus-dev.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-dev-data:/prometheus
+    networks:
+      - content-platform-dev
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+
+  # Grafana for Development Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: content-platform-grafana-dev
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-azure-monitor-datasource
+    volumes:
+      - grafana-dev-data:/var/lib/grafana
+      - ./config/grafana/provisioning-dev:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards-dev:/var/lib/grafana/dashboards:ro
+    networks:
+      - content-platform-dev
+    depends_on:
+      - prometheus
+
+  # Jaeger for Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: content-platform-jaeger-dev
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    networks:
+      - content-platform-dev
+
+  # Elasticsearch for Development Logging
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: content-platform-elasticsearch-dev
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    volumes:
+      - elasticsearch-dev-data:/usr/share/elasticsearch/data
+    networks:
+      - content-platform-dev
+    ports:
+      - "9200:9200"
+
+  # Kibana for Development Log Visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    container_name: content-platform-kibana-dev
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - content-platform-dev
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  # Test Database for Integration Tests
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: content-platform-postgres-test
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=content_platform_test
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    networks:
+      - content-platform-dev
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d content_platform_test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SonarQube for Code Quality Analysis
+  sonarqube:
+    image: sonarqube:community
+    container_name: content-platform-sonarqube-dev
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://postgres:5432/sonarqube
+      - SONAR_JDBC_USERNAME=postgres
+      - SONAR_JDBC_PASSWORD=password
+    volumes:
+      - sonarqube-dev-data:/opt/sonarqube/data
+      - sonarqube-dev-logs:/opt/sonarqube/logs
+      - sonarqube-dev-extensions:/opt/sonarqube/extensions
+    networks:
+      - content-platform-dev
+    depends_on:
+      - postgres
+
+networks:
+  content-platform-dev:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  postgres-dev-data:
+    driver: local
+  postgres-test-data:
+    driver: local
+  redis-dev-data:
+    driver: local
+  minio-dev-data:
+    driver: local
+  app-logs:
+    driver: local
+  prometheus-dev-data:
+    driver: local
+  grafana-dev-data:
+    driver: local
+  elasticsearch-dev-data:
+    driver: local
+  sonarqube-dev-data:
+    driver: local
+  sonarqube-dev-logs:
+    driver: local
+  sonarqube-dev-extensions:
+    driver: local

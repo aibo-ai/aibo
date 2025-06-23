@@ -1,0 +1,160 @@
+# GitOps configuration for Flux v2
+# This file defines the GitOps sync configuration for the Content Creation Platform
+
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: GitRepository
+metadata:
+  name: content-platform-repo
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: https://github.com/company/content-creation-platform
+  secretRef:
+    name: git-credentials
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
+metadata:
+  name: content-platform-infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: "./k8s/infrastructure"
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  validation: client
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: content-platform-backend
+      namespace: content-platform
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
+metadata:
+  name: content-platform-apps
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: "./k8s/apps"
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  dependsOn:
+    - name: content-platform-infrastructure
+  validation: client
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: content-platform-backend
+      namespace: content-platform
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: content-platform-frontend
+      namespace: content-platform
+  timeout: 10m
+  postBuild:
+    substitute:
+      cluster_name: "content-platform-aks"
+      cluster_region: "eastus"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta1
+kind: Provider
+metadata:
+  name: slack-alerts
+  namespace: flux-system
+spec:
+  type: slack
+  channel: "#platform-alerts"
+  secretRef:
+    name: slack-webhook
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta1
+kind: Alert
+metadata:
+  name: content-platform-alerts
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack-alerts
+  eventSeverity: info
+  eventSources:
+    - kind: GitRepository
+      name: content-platform-repo
+    - kind: Kustomization
+      name: content-platform-infrastructure
+    - kind: Kustomization
+      name: content-platform-apps
+  summary: "Content Platform GitOps Alert"
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: content-platform-backend
+  namespace: flux-system
+spec:
+  image: contentplatformacr.azurecr.io/content-creation-platform
+  interval: 1m
+  secretRef:
+    name: acr-credentials
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: content-platform-backend-policy
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: content-platform-backend
+  policy:
+    semver:
+      range: ">=1.0.0"
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: content-platform-automation
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@company.com
+        name: fluxcdbot
+      messageTemplate: |
+        Automated image update
+
+        Automation name: {{ .AutomationObject }}
+
+        Files:
+        {{ range $filename, $_ := .Updated.Files -}}
+        - {{ $filename }}
+        {{ end -}}
+
+        Objects:
+        {{ range $resource, $_ := .Updated.Objects -}}
+        - {{ $resource.Kind }} {{ $resource.Name }}
+        {{ end -}}
+
+        Images:
+        {{ range .Updated.Images -}}
+        - {{.}}
+        {{ end -}}
+    push:
+      branch: main
+  update:
+    path: "./k8s"
+    strategy: Setters

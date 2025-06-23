@@ -118,6 +118,79 @@
       ]
     },
     {
+      "title": "Advanced Features Performance",
+      "widgets": [
+        {
+          "title": "ML Content Optimization Metrics",
+          "type": "metrics",
+          "metrics": [
+            "MLContentOptimizer:ProcessingTime",
+            "MLContentOptimizer:ConfidenceScore",
+            "MLContentOptimizer:ImprovementScore"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Fact Checking Accuracy",
+          "type": "metrics",
+          "metrics": [
+            "RealtimeFactChecker:AccuracyRate",
+            "RealtimeFactChecker:VerificationTime",
+            "RealtimeFactChecker:SourcesChecked"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Blockchain Verification Performance",
+          "type": "metrics",
+          "metrics": [
+            "BlockchainVerification:SubmissionTime",
+            "BlockchainVerification:ConfirmationTime",
+            "BlockchainVerification:SuccessRate"
+          ],
+          "aggregation": "avg",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Advanced Features Usage",
+          "type": "metrics",
+          "metrics": [
+            "AdvancedFeatures:MLOptimizationRequests",
+            "AdvancedFeatures:FactCheckRequests",
+            "AdvancedFeatures:BlockchainVerificationRequests",
+            "AdvancedFeatures:ComprehensiveAnalysisRequests"
+          ],
+          "aggregation": "count",
+          "timeRange": "1h"
+        },
+        {
+          "title": "Content Quality Trends",
+          "type": "metrics",
+          "metrics": [
+            "ContentQuality:EngagementScore",
+            "ContentQuality:ReadabilityScore",
+            "ContentQuality:SEOScore",
+            "ContentQuality:ConversionScore"
+          ],
+          "aggregation": "avg",
+          "timeRange": "24h"
+        },
+        {
+          "title": "Real-time Monitoring Streams",
+          "type": "metrics",
+          "metrics": [
+            "RealtimeMonitoring:ActiveStreams",
+            "RealtimeMonitoring:AlertsTriggered",
+            "RealtimeMonitoring:MisinformationDetected"
+          ],
+          "aggregation": "count",
+          "timeRange": "1h"
+        }
+      ]
+    },
+    {
       "title": "Application Exceptions & Errors",
       "widgets": [
         {

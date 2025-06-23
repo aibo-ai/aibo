@@ -1,0 +1,422 @@
+# Azure DevOps Pipeline for Content Creation Platform
+# This pipeline handles CI/CD for the NestJS backend and React frontend
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    exclude:
+      - README.md
+      - docs/*
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - README.md
+      - docs/*
+
+variables:
+  # Build Configuration
+  buildConfiguration: 'Release'
+  nodeVersion: '18.x'
+  
+  # Container Registry
+  containerRegistry: 'contentplatformacr.azurecr.io'
+  imageRepository: 'content-creation-platform'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  
+  # Kubernetes
+  kubernetesServiceConnection: 'content-platform-k8s'
+  kubernetesNamespace: 'content-platform'
+  
+  # Application Insights
+  applicationInsightsKey: '$(APPINSIGHTS_INSTRUMENTATIONKEY)'
+  
+  # Environment Variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+    environment: 'production'
+    azureSubscription: 'content-platform-prod'
+    resourceGroup: 'content-platform-prod-rg'
+  ${{ elseif eq(variables['Build.SourceBranch'], 'refs/heads/develop') }}:
+    environment: 'staging'
+    azureSubscription: 'content-platform-staging'
+    resourceGroup: 'content-platform-staging-rg'
+  ${{ else }}:
+    environment: 'development'
+    azureSubscription: 'content-platform-dev'
+    resourceGroup: 'content-platform-dev-rg'
+
+stages:
+  # Build and Test Stage
+  - stage: BuildAndTest
+    displayName: 'Build and Test'
+    jobs:
+      - job: BuildBackend
+        displayName: 'Build Backend'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+          
+          - task: Cache@2
+            displayName: 'Cache node modules'
+            inputs:
+              key: 'npm | "$(Agent.OS)" | package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: ~/.npm
+          
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+          
+          - script: |
+              npm run lint
+            displayName: 'Run ESLint'
+          
+          - script: |
+              npm run test:unit
+            displayName: 'Run unit tests'
+            env:
+              NODE_ENV: test
+          
+          - script: |
+              npm run test:e2e
+            displayName: 'Run e2e tests'
+            env:
+              NODE_ENV: test
+              DATABASE_URL: $(TEST_DATABASE_URL)
+              REDIS_URL: $(TEST_REDIS_URL)
+          
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'test-results.xml'
+              mergeTestResults: true
+            condition: succeededOrFailed()
+          
+          - task: PublishCodeCoverageResults@1
+            displayName: 'Publish code coverage'
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: 'coverage/cobertura-coverage.xml'
+              reportDirectory: 'coverage'
+            condition: succeededOrFailed()
+          
+          - script: |
+              npm run build
+            displayName: 'Build application'
+            env:
+              NODE_ENV: production
+          
+          - task: ArchiveFiles@2
+            displayName: 'Archive build artifacts'
+            inputs:
+              rootFolderOrFile: 'dist'
+              includeRootFolder: false
+              archiveType: 'tar'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/backend-$(Build.BuildId).tar.gz'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish build artifacts'
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'backend'
+
+      - job: BuildFrontend
+        displayName: 'Build Frontend'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+          
+          - script: |
+              cd frontend
+              npm ci
+            displayName: 'Install frontend dependencies'
+          
+          - script: |
+              cd frontend
+              npm run lint
+            displayName: 'Run frontend linting'
+          
+          - script: |
+              cd frontend
+              npm run test -- --coverage --watchAll=false
+            displayName: 'Run frontend tests'
+          
+          - script: |
+              cd frontend
+              npm run build
+            displayName: 'Build frontend'
+            env:
+              REACT_APP_API_URL: $(REACT_APP_API_URL)
+              REACT_APP_ENVIRONMENT: $(environment)
+          
+          - task: ArchiveFiles@2
+            displayName: 'Archive frontend build'
+            inputs:
+              rootFolderOrFile: 'frontend/build'
+              includeRootFolder: false
+              archiveType: 'tar'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/frontend-$(Build.BuildId).tar.gz'
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish frontend artifacts'
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'frontend'
+
+      - job: SecurityScan
+        displayName: 'Security Scanning'
+        pool:
+          vmImage: 'ubuntu-latest'
+        dependsOn: BuildBackend
+        
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+          
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+          
+          - script: |
+              npm audit --audit-level=high
+            displayName: 'Run npm audit'
+            continueOnError: true
+          
+          - task: SonarCloudPrepare@1
+            displayName: 'Prepare SonarCloud analysis'
+            inputs:
+              SonarCloud: 'SonarCloud'
+              organization: 'content-platform'
+              scannerMode: 'CLI'
+              configMode: 'manual'
+              cliProjectKey: 'content-creation-platform'
+              cliProjectName: 'Content Creation Platform'
+              cliSources: 'src'
+              extraProperties: |
+                sonar.typescript.lcov.reportPaths=coverage/lcov.info
+                sonar.exclusions=**/*.spec.ts,**/*.test.ts,**/node_modules/**
+          
+          - script: |
+              npm run test:unit
+            displayName: 'Run tests for SonarCloud'
+            env:
+              NODE_ENV: test
+          
+          - task: SonarCloudAnalyze@1
+            displayName: 'Run SonarCloud analysis'
+          
+          - task: SonarCloudPublish@1
+            displayName: 'Publish SonarCloud results'
+
+  # Container Build Stage
+  - stage: ContainerBuild
+    displayName: 'Build Container Images'
+    dependsOn: BuildAndTest
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    
+    jobs:
+      - job: BuildDockerImage
+        displayName: 'Build Docker Image'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download build artifacts'
+            inputs:
+              buildType: 'current'
+              downloadType: 'specific'
+              artifactName: 'backend'
+              downloadPath: '$(System.ArtifactsDirectory)'
+          
+          - task: Docker@2
+            displayName: 'Build Docker image'
+            inputs:
+              containerRegistry: '$(containerRegistry)'
+              repository: '$(imageRepository)'
+              command: 'build'
+              Dockerfile: '$(dockerfilePath)'
+              tags: |
+                $(Build.BuildId)
+                latest
+                $(environment)
+              arguments: |
+                --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+                --build-arg GIT_COMMIT="$(Build.SourceVersion)"
+                --build-arg VERSION="$(Build.BuildId)"
+          
+          - task: Docker@2
+            displayName: 'Push Docker image'
+            inputs:
+              containerRegistry: '$(containerRegistry)'
+              repository: '$(imageRepository)'
+              command: 'push'
+              tags: |
+                $(Build.BuildId)
+                latest
+                $(environment)
+          
+          - task: AzureCLI@2
+            displayName: 'Scan container image for vulnerabilities'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr task run \
+                  --registry $(containerRegistry) \
+                  --name security-scan \
+                  --set image=$(containerRegistry)/$(imageRepository):$(Build.BuildId)
+
+  # Deployment Stage
+  - stage: Deploy
+    displayName: 'Deploy to $(environment)'
+    dependsOn: ContainerBuild
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    
+    jobs:
+      - deployment: DeployToKubernetes
+        displayName: 'Deploy to Kubernetes'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: '$(environment)'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy to Kubernetes'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: '$(kubernetesServiceConnection)'
+                    namespace: '$(kubernetesNamespace)'
+                    manifests: |
+                      k8s/deployment.yaml
+                      k8s/service.yaml
+                      k8s/ingress.yaml
+                      k8s/configmap.yaml
+                    containers: '$(containerRegistry)/$(imageRepository):$(Build.BuildId)'
+                
+                - task: Kubernetes@1
+                  displayName: 'Wait for deployment rollout'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: '$(kubernetesServiceConnection)'
+                    namespace: '$(kubernetesNamespace)'
+                    command: 'rollout'
+                    arguments: 'status deployment/content-platform-backend --timeout=300s'
+                
+                - task: AzureCLI@2
+                  displayName: 'Run smoke tests'
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Get the service URL
+                      SERVICE_URL=$(kubectl get ingress content-platform-ingress -n $(kubernetesNamespace) -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                      
+                      # Run health check
+                      curl -f http://$SERVICE_URL/health || exit 1
+                      
+                      # Run basic API test
+                      curl -f http://$SERVICE_URL/api/health || exit 1
+                      
+                      echo "Smoke tests passed successfully"
+
+  # Post-Deployment Stage
+  - stage: PostDeployment
+    displayName: 'Post-Deployment Tasks'
+    dependsOn: Deploy
+    condition: succeeded()
+    
+    jobs:
+      - job: NotifyTeams
+        displayName: 'Notify Teams'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: InvokeRESTAPI@1
+            displayName: 'Send Teams notification'
+            inputs:
+              connectionType: 'connectedServiceName'
+              serviceConnection: 'TeamsWebhook'
+              method: 'POST'
+              headers: |
+                Content-Type: application/json
+              body: |
+                {
+                  "text": "✅ Content Creation Platform deployed successfully to $(environment)",
+                  "sections": [
+                    {
+                      "activityTitle": "Deployment Completed",
+                      "activitySubtitle": "Build $(Build.BuildId)",
+                      "facts": [
+                        {
+                          "name": "Environment",
+                          "value": "$(environment)"
+                        },
+                        {
+                          "name": "Build ID",
+                          "value": "$(Build.BuildId)"
+                        },
+                        {
+                          "name": "Commit",
+                          "value": "$(Build.SourceVersion)"
+                        }
+                      ]
+                    }
+                  ]
+                }
+      
+      - job: UpdateApplicationInsights
+        displayName: 'Update Application Insights'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Create deployment annotation'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az rest \
+                  --method POST \
+                  --uri "https://api.applicationinsights.io/v1/apps/$(applicationInsightsKey)/annotations" \
+                  --headers "X-API-Key=$(APPINSIGHTS_API_KEY)" \
+                  --body '{
+                    "AnnotationName": "Deployment",
+                    "EventTime": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'",
+                    "Category": "Deployment",
+                    "Properties": {
+                      "BuildId": "$(Build.BuildId)",
+                      "Environment": "$(environment)",
+                      "Commit": "$(Build.SourceVersion)",
+                      "ReleaseName": "$(Release.ReleaseName)"
+                    }
+                  }'

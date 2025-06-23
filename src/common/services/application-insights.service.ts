@@ -180,4 +180,160 @@ export class ApplicationInsightsService implements OnModuleInit {
   getTelemetryClient(): appInsights.TelemetryClient | null {
     return this.client;
   }
+
+  /**
+   * Track performance metrics with enhanced context
+   */
+  trackPerformanceMetric(metric: {
+    name: string;
+    value: number;
+    unit: string;
+    category?: string;
+    properties?: Record<string, any>;
+  }): void {
+    if (!this.isInitialized || !this.client) {
+      return;
+    }
+
+    this.client.trackMetric({
+      name: `Performance.${metric.name}`,
+      value: metric.value,
+      properties: {
+        ...metric.properties,
+        unit: metric.unit,
+        category: metric.category || 'general',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  /**
+   * Track business metrics
+   */
+  trackBusinessMetric(metric: {
+    name: string;
+    value: number;
+    category: string;
+    properties?: Record<string, any>;
+  }): void {
+    if (!this.isInitialized || !this.client) {
+      return;
+    }
+
+    this.client.trackMetric({
+      name: `Business.${metric.category}.${metric.name}`,
+      value: metric.value,
+      properties: {
+        ...metric.properties,
+        category: metric.category,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  /**
+   * Track security events
+   */
+  trackSecurityEvent(event: {
+    eventType: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    userId?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    properties?: Record<string, any>;
+  }): void {
+    if (!this.isInitialized || !this.client) {
+      return;
+    }
+
+    this.client.trackEvent({
+      name: `Security.${event.eventType}`,
+      properties: {
+        ...event.properties,
+        severity: event.severity,
+        description: event.description,
+        userId: event.userId,
+        ipAddress: event.ipAddress,
+        userAgent: event.userAgent,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Also track as exception if critical
+    if (event.severity === 'critical') {
+      this.client.trackException({
+        exception: new Error(`Critical security event: ${event.description}`),
+        properties: {
+          eventType: event.eventType,
+          severity: event.severity,
+          userId: event.userId,
+          ipAddress: event.ipAddress
+        }
+      });
+    }
+  }
+
+  /**
+   * Track user actions
+   */
+  trackUserAction(action: string, userId: string, properties?: Record<string, any>): void {
+    if (!this.isInitialized || !this.client) {
+      return;
+    }
+
+    this.client.trackEvent({
+      name: `UserAction.${action}`,
+      properties: {
+        ...properties,
+        userId,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  /**
+   * Track API performance with detailed metrics
+   */
+  trackApiPerformance(data: {
+    endpoint: string;
+    method: string;
+    statusCode: number;
+    duration: number;
+    requestSize?: number;
+    responseSize?: number;
+    properties?: Record<string, any>;
+  }): void {
+    if (!this.isInitialized || !this.client) {
+      return;
+    }
+
+    // Track response time metric
+    this.client.trackMetric({
+      name: 'API.ResponseTime',
+      value: data.duration,
+      properties: {
+        ...data.properties,
+        endpoint: data.endpoint,
+        method: data.method,
+        statusCode: data.statusCode.toString(),
+        success: (data.statusCode >= 200 && data.statusCode < 400).toString()
+      }
+    });
+
+    // Track API call event
+    this.client.trackEvent({
+      name: 'API.Call',
+      properties: {
+        ...data.properties,
+        endpoint: data.endpoint,
+        method: data.method,
+        statusCode: data.statusCode.toString(),
+        duration: data.duration.toString(),
+        requestSize: data.requestSize?.toString(),
+        responseSize: data.responseSize?.toString(),
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
 }

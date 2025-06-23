@@ -38,6 +38,72 @@ const llmContentNavItems: NavItem[] = [
   }
 ];
 
+const competitionNavItems: NavItem[] = [
+  {
+    title: 'Competition X Dashboard',
+    path: '/competition-x',
+    icon: '🎯'
+  },
+  {
+    title: 'Competitor Analysis',
+    path: '/competition-x/analysis',
+    icon: '📊'
+  },
+  {
+    title: 'Market Intelligence',
+    path: '/competition-x/intelligence',
+    icon: '🧠'
+  },
+  {
+    title: 'Real-time Monitoring',
+    path: '/competition-x/monitoring',
+    icon: '📡'
+  }
+];
+
+const productXNavItems: NavItem[] = [
+  {
+    title: 'Product X Dashboard',
+    path: '/product-x',
+    icon: '🛏️'
+  },
+  {
+    title: 'Market Research',
+    path: '/product-x/market-research',
+    icon: '📊'
+  },
+  {
+    title: 'Competitive Intelligence',
+    path: '/product-x/competitive-intelligence',
+    icon: '🎯'
+  },
+  {
+    title: 'Trend Analysis',
+    path: '/product-x/trend-analysis',
+    icon: '📈'
+  },
+  {
+    title: 'User Profile Intelligence',
+    path: '/product-x/user-profiles',
+    icon: '👥'
+  },
+  {
+    title: 'Audience Expansion',
+    path: '/product-x/audience-expansion',
+    icon: '🌐'
+  },
+  {
+    title: 'Media Intelligence',
+    path: '/product-x/media-intelligence',
+    icon: '📺'
+  },
+  {
+    title: 'Strategic Recommendations',
+    path: '/product-x/strategic-recommendations',
+    icon: '💡'
+  }
+];
+
 const SiteNavigation: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
@@ -98,7 +164,45 @@ const SiteNavigation: React.FC = () => {
               </li>
             ))}
           </ul>
-          
+
+          <div className="px-4 py-2 mt-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Competition X</h2>
+          </div>
+          <ul>
+            {competitionNavItems.map((item) => (
+              <li key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                    ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
+                    : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  <span className="mr-3">{item.icon}</span>
+                  <span>{item.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          <div className="px-4 py-2 mt-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Product X - Sleep Company</h2>
+          </div>
+          <ul>
+            {productXNavItems.map((item) => (
+              <li key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                    ? 'bg-emerald-50 text-emerald-600 border-l-4 border-emerald-600'
+                    : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  <span className="mr-3">{item.icon}</span>
+                  <span>{item.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
           <div className="px-4 py-2 mt-6">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Settings</h2>
           </div>
@@ -174,6 +278,46 @@ const SiteNavigation: React.FC = () => {
                       to={item.path}
                       className={`flex items-center px-4 py-3 text-sm ${isActive(item.path) 
                         ? 'bg-blue-50 text-blue-600 border-l-4 border-blue-600' 
+                        : 'text-gray-700 hover:bg-gray-50'}`}
+                      onClick={handleDrawerToggle}
+                    >
+                      <span className="mr-3">{item.icon}</span>
+                      <span>{item.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="px-4 py-2 mt-6">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Competition X</h2>
+              </div>
+              <ul>
+                {competitionNavItems.map((item) => (
+                  <li key={item.path}>
+                    <Link
+                      to={item.path}
+                      className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                        ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
+                        : 'text-gray-700 hover:bg-gray-50'}`}
+                      onClick={handleDrawerToggle}
+                    >
+                      <span className="mr-3">{item.icon}</span>
+                      <span>{item.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="px-4 py-2 mt-6">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Product X - Sleep Company</h2>
+              </div>
+              <ul>
+                {productXNavItems.map((item) => (
+                  <li key={item.path}>
+                    <Link
+                      to={item.path}
+                      className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                        ? 'bg-emerald-50 text-emerald-600 border-l-4 border-emerald-600'
                         : 'text-gray-700 hover:bg-gray-50'}`}
                       onClick={handleDrawerToggle}
                     >

@@ -1,0 +1,41 @@
+apiVersion: v2
+name: content-platform
+description: A Helm chart for Content Creation Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/company/content-creation-platform
+sources:
+  - https://github.com/company/content-creation-platform
+maintainers:
+  - name: Platform Team
+    email: platform-team@company.com
+keywords:
+  - content
+  - ai
+  - platform
+  - nestjs
+  - react
+annotations:
+  category: Application
+dependencies:
+  - name: postgresql
+    version: 12.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 17.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: nginx
+    version: 13.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: nginx.enabled
+  - name: prometheus
+    version: 15.x.x
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.prometheus.enabled
+  - name: grafana
+    version: 6.x.x
+    repository: https://grafana.github.io/helm-charts
+    condition: monitoring.grafana.enabled

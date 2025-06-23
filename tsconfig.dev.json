@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "noEmitOnError": false,
+    "transpileOnly": true,
+    "isolatedModules": true
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "skipIgnore": true,
+    "compilerOptions": {
+      "skipLibCheck": true,
+      "skipDefaultLibCheck": true,
+      "noEmitOnError": false
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "examples/**/*",
+    "scripts/**/*",
+    "azure-functions/**/*",
+    "src/benchmarks/**/*",
+    "src/components/competition-x/**/*",
+    "src/components/advanced-features/**/*"
+  ]
+}

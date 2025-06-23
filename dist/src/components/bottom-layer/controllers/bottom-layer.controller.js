@@ -44,6 +44,21 @@ let BottomLayerController = class BottomLayerController {
         };
         return this.freshnessAggregatorService.aggregateFreshContent(params);
     }
+    async aggregateFreshness(params) {
+        const aggregationParams = {
+            query: params.topic,
+            limit: 15,
+            contentTypes: undefined,
+            timeframe: undefined,
+            language: 'en',
+            region: 'us',
+            skipCache: false
+        };
+        return this.freshnessAggregatorService.aggregateFreshContent(aggregationParams);
+    }
+    async analyzeKeywords(params) {
+        return this.keywordTopicAnalyzerService.analyzeContent(params.topic, params.segment);
+    }
     async calculateFreshness(content, segment) {
         const publishedDate = new Date(content.publishedAt || content.publishedDate || new Date());
         const now = new Date();
@@ -107,6 +122,22 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], BottomLayerController.prototype, "getFreshContent", null);
+__decorate([
+    (0, common_1.Post)('aggregate-freshness'),
+    (0, swagger_1.ApiOperation)({ summary: 'Aggregate fresh content with POST method for orchestration' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BottomLayerController.prototype, "aggregateFreshness", null);
+__decorate([
+    (0, common_1.Post)('analyze-keywords'),
+    (0, swagger_1.ApiOperation)({ summary: 'Analyze keywords for a topic (orchestration endpoint)' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BottomLayerController.prototype, "analyzeKeywords", null);
 __decorate([
     (0, common_1.Post)('calculate-freshness'),
     (0, swagger_1.ApiOperation)({ summary: 'Calculate freshness score for content' }),

@@ -1,0 +1,269 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: content-platform-alerts
+  namespace: content-platform
+  labels:
+    app: content-platform
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: content-platform.rules
+    interval: 30s
+    rules:
+    # Application Health Alerts
+    - alert: ApplicationDown
+      expr: up{job="content-platform-backend"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "Content Platform application is down"
+        description: "Content Platform backend service has been down for more than 1 minute."
+        runbook_url: "https://docs.contentplatform.com/runbooks/application-down"
+
+    - alert: HighErrorRate
+      expr: |
+        (
+          rate(http_requests_total{job="content-platform-backend",status=~"5.."}[5m]) /
+          rate(http_requests_total{job="content-platform-backend"}[5m])
+        ) * 100 > 5
+      for: 5m
+      labels:
+        severity: critical
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is {{ $value }}% for the last 5 minutes."
+        runbook_url: "https://docs.contentplatform.com/runbooks/high-error-rate"
+
+    - alert: HighResponseTime
+      expr: |
+        histogram_quantile(0.95, 
+          rate(http_request_duration_seconds_bucket{job="content-platform-backend"}[5m])
+        ) > 2
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "High response time detected"
+        description: "95th percentile response time is {{ $value }}s for the last 5 minutes."
+        runbook_url: "https://docs.contentplatform.com/runbooks/high-response-time"
+
+    - alert: LowThroughput
+      expr: |
+        rate(http_requests_total{job="content-platform-backend"}[5m]) < 1
+      for: 10m
+      labels:
+        severity: warning
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "Low request throughput"
+        description: "Request rate is {{ $value }} requests/second for the last 10 minutes."
+
+    # Resource Usage Alerts
+    - alert: HighMemoryUsage
+      expr: |
+        (
+          process_resident_memory_bytes{job="content-platform-backend"} /
+          container_spec_memory_limit_bytes{pod=~"content-platform-backend-.*"}
+        ) * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "High memory usage"
+        description: "Memory usage is {{ $value }}% for pod {{ $labels.pod }}."
+        runbook_url: "https://docs.contentplatform.com/runbooks/high-memory-usage"
+
+    - alert: HighCPUUsage
+      expr: |
+        rate(process_cpu_seconds_total{job="content-platform-backend"}[5m]) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: backend
+      annotations:
+        summary: "High CPU usage"
+        description: "CPU usage is {{ $value }}% for the last 5 minutes."
+        runbook_url: "https://docs.contentplatform.com/runbooks/high-cpu-usage"
+
+    # Database Alerts
+    - alert: DatabaseConnectionsHigh
+      expr: |
+        database_connections_active{job="content-platform-backend"} > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: database
+      annotations:
+        summary: "High number of database connections"
+        description: "Active database connections: {{ $value }}"
+        runbook_url: "https://docs.contentplatform.com/runbooks/database-connections"
+
+    - alert: DatabaseSlowQueries
+      expr: |
+        rate(database_query_duration_seconds_sum{job="content-platform-backend"}[5m]) /
+        rate(database_query_duration_seconds_count{job="content-platform-backend"}[5m]) > 1
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: database
+      annotations:
+        summary: "Slow database queries detected"
+        description: "Average query time is {{ $value }}s for the last 5 minutes."
+
+    # Cache Alerts
+    - alert: LowCacheHitRate
+      expr: |
+        (
+          cache_hits_total{job="content-platform-backend"} /
+          (cache_hits_total{job="content-platform-backend"} + cache_misses_total{job="content-platform-backend"})
+        ) * 100 < 80
+      for: 10m
+      labels:
+        severity: warning
+        service: content-platform
+        component: cache
+      annotations:
+        summary: "Low cache hit rate"
+        description: "Cache hit rate is {{ $value }}% for the last 10 minutes."
+
+    # Business Logic Alerts
+    - alert: ContentGenerationFailures
+      expr: |
+        rate(content_generation_failures_total{job="content-platform-backend"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: content-generation
+      annotations:
+        summary: "High content generation failure rate"
+        description: "Content generation failure rate is {{ $value }} failures/second."
+
+    - alert: CitationVerificationFailures
+      expr: |
+        rate(citation_verification_failures_total{job="content-platform-backend"}[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: citation-verification
+      annotations:
+        summary: "High citation verification failure rate"
+        description: "Citation verification failure rate is {{ $value }} failures/second."
+
+    - alert: CompetitiveAnalysisStale
+      expr: |
+        time() - competitive_analysis_last_update_timestamp{job="content-platform-backend"} > 86400
+      for: 1m
+      labels:
+        severity: warning
+        service: content-platform
+        component: competitive-analysis
+      annotations:
+        summary: "Competitive analysis data is stale"
+        description: "Competitive analysis data hasn't been updated for more than 24 hours."
+
+    # Kubernetes Alerts
+    - alert: PodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="content-platform"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: content-platform
+        component: kubernetes
+      annotations:
+        summary: "Pod is crash looping"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping."
+
+    - alert: PodNotReady
+      expr: |
+        kube_pod_status_ready{namespace="content-platform",condition="false"} == 1
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: kubernetes
+      annotations:
+        summary: "Pod not ready"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is not ready."
+
+    - alert: DeploymentReplicasMismatch
+      expr: |
+        kube_deployment_spec_replicas{namespace="content-platform"} !=
+        kube_deployment_status_available_replicas{namespace="content-platform"}
+      for: 10m
+      labels:
+        severity: warning
+        service: content-platform
+        component: kubernetes
+      annotations:
+        summary: "Deployment replicas mismatch"
+        description: "Deployment {{ $labels.deployment }} has {{ $value }} available replicas, expected {{ $labels.spec_replicas }}."
+
+    # External Dependencies Alerts
+    - alert: ExternalAPIHighLatency
+      expr: |
+        histogram_quantile(0.95,
+          rate(external_api_request_duration_seconds_bucket{job="content-platform-backend"}[5m])
+        ) > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: external-api
+      annotations:
+        summary: "High external API latency"
+        description: "95th percentile latency for {{ $labels.api }} is {{ $value }}s."
+
+    - alert: ExternalAPIErrors
+      expr: |
+        rate(external_api_requests_total{job="content-platform-backend",status=~"5.."}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: content-platform
+        component: external-api
+      annotations:
+        summary: "High external API error rate"
+        description: "Error rate for {{ $labels.api }} is {{ $value }} errors/second."
+
+    # Security Alerts
+    - alert: UnauthorizedAccess
+      expr: |
+        rate(http_requests_total{job="content-platform-backend",status="401"}[5m]) > 0.5
+      for: 2m
+      labels:
+        severity: warning
+        service: content-platform
+        component: security
+      annotations:
+        summary: "High rate of unauthorized access attempts"
+        description: "Unauthorized access rate is {{ $value }} attempts/second."
+
+    - alert: SuspiciousActivity
+      expr: |
+        rate(security_events_total{job="content-platform-backend",severity="high"}[5m]) > 0
+      for: 1m
+      labels:
+        severity: critical
+        service: content-platform
+        component: security
+      annotations:
+        summary: "Suspicious security activity detected"
+        description: "High severity security events detected at {{ $value }} events/second."

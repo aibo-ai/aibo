@@ -4,6 +4,17 @@
 export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
+  success?: boolean;
+  message?: string;
+}
+
+/**
+ * Voice Settings for Text-to-Speech
+ */
+export interface VoiceSettings {
+  voice: string;
+  speed: number;
+  stability: number;
 }
 
 /**
@@ -19,6 +30,12 @@ export interface LLMContentInput {
   purpose?: string;
   searchKeywords?: string[];
   llmTarget?: 'general' | 'gpt4' | 'claude' | 'palm';
+
+  // AI Enhancement Features
+  enableImageGeneration?: boolean;
+  enableTextToSpeech?: boolean;
+  imageStyle?: string;
+  voiceSettings?: VoiceSettings;
 }
 
 /**
@@ -45,6 +62,23 @@ export interface LLMContentOutput {
     estimatedTokenCount: number;
     llmQualityScore: number;
     semanticScore: number;
+
+    // Content Quality Metrics
+    wordCount?: number;
+    readingTime?: number;
+    fleschReadingEase?: number;
+    readingLevel?: string;
+    qualityScore?: number;
+    seoOptimized?: boolean;
+    aiEnhanced?: boolean;
+
+    // AI Enhancement Features
+    hasImage?: boolean;
+    imageUrl?: string;
+    hasAudio?: boolean;
+    audioUrl?: string;
+    imageStyle?: string;
+    voiceUsed?: string;
   };
   generatedAt: string;
 }

@@ -71,7 +71,29 @@ export class TopLayerController {
   async generateOriginalResearch(@Body() data: any) {
     return this.originalResearchEngineService.generateOriginalResearch(
       data.topic,
-      data.contentType || 'blog_post', // Provide a default content type if not specified
+      data.contentType || 'blog_post',
+      data.segment
+    );
+  }
+
+  @Post('generate-research')
+  @ApiOperation({ summary: 'Generate research (orchestration alias)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Topic to research' },
+        segment: { type: 'string', enum: ['b2b', 'b2c'], description: 'Target segment' },
+        contentType: { type: 'string', description: 'Type of content' },
+      },
+      required: ['topic', 'segment'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Research generated successfully' })
+  async generateResearch(@Body() data: any) {
+    return this.originalResearchEngineService.generateOriginalResearch(
+      data.topic,
+      data.contentType || 'blog_post',
       data.segment
     );
   }

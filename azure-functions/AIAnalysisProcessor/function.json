@@ -1,0 +1,12 @@
+{
+  "bindings": [
+    {
+      "name": "myQueueItem",
+      "type": "serviceBusTrigger",
+      "direction": "in",
+      "queueName": "ai-analysis-queue",
+      "connection": "ServiceBusConnection"
+    }
+  ],
+  "scriptFile": "../dist/AIAnalysisProcessor/index.js"
+}

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Architect - AI-Enhanced Content Generation Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">Content Architect</h1>
+            <p class="text-xl text-gray-600">AI-Enhanced Content Generation with DALL-E & ElevenLabs</p>
+        </div>
+
+        <!-- Content Generation Form -->
+        <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold mb-6">Generate AI-Enhanced Content</h2>
+            
+            <form id="contentForm" class="space-y-6">
+                <!-- Topic -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Topic *</label>
+                    <input type="text" id="topic" required 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Enter your content topic...">
+                </div>
+
+                <!-- Content Type & Audience -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Content Type</label>
+                        <select id="contentType" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="blog_post">Blog Post</option>
+                            <option value="technical_guide">Technical Guide</option>
+                            <option value="case_study">Case Study</option>
+                            <option value="product_review">Product Review</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Audience</label>
+                        <select id="audience" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="b2b">B2B</option>
+                            <option value="b2c">B2C</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tone & LLM Target -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tone of Voice</label>
+                        <select id="toneOfVoice" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="professional">Professional</option>
+                            <option value="conversational">Conversational</option>
+                            <option value="technical">Technical</option>
+                            <option value="friendly">Friendly</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">LLM Target</label>
+                        <select id="llmTarget" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="general">General</option>
+                            <option value="claude">Claude</option>
+                            <option value="gpt4">GPT-4</option>
+                            <option value="palm">PaLM</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Key Points -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Key Points (Optional)</label>
+                    <textarea id="keyPoints" rows="3" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Enter key points separated by commas..."></textarea>
+                </div>
+
+                <!-- AI Features -->
+                <div class="bg-blue-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-medium text-blue-900 mb-3">🤖 AI Enhancement Features</h3>
+                    
+                    <!-- Image Generation -->
+                    <div class="mb-4">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="enableImageGeneration" class="mr-2">
+                            <span class="text-sm font-medium text-gray-700">Generate AI Image with DALL-E</span>
+                        </label>
+                        <div id="imageOptions" class="mt-2 ml-6 hidden">
+                            <select id="imageStyle" class="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                                <option value="professional">Professional</option>
+                                <option value="vibrant">Vibrant</option>
+                                <option value="minimal">Minimal</option>
+                                <option value="corporate">Corporate</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Text-to-Speech -->
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="enableTextToSpeech" class="mr-2">
+                            <span class="text-sm font-medium text-gray-700">Generate Audio with ElevenLabs</span>
+                        </label>
+                        <div id="audioOptions" class="mt-2 ml-6 hidden">
+                            <select id="voiceSettings" class="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                                <option value="alloy">Alloy (Neutral)</option>
+                                <option value="echo">Echo (Male)</option>
+                                <option value="fable">Fable (British)</option>
+                                <option value="onyx">Onyx (Deep)</option>
+                                <option value="nova">Nova (Female)</option>
+                                <option value="shimmer">Shimmer (Soft)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generate Button -->
+                <button type="submit" id="generateBtn" 
+                        class="w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+                    <span id="generateText">🚀 Generate AI-Enhanced Content</span>
+                    <span id="loadingText" class="hidden">
+                        <svg class="loading inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" opacity="0.25"></circle>
+                            <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Generating Content...
+                    </span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="max-w-4xl mx-auto hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-semibold mb-6">✨ Generated Content</h2>
+                
+                <!-- Content Metadata -->
+                <div id="contentMetadata" class="bg-gray-50 p-4 rounded-lg mb-6">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <span class="font-medium text-gray-600">Word Count:</span>
+                            <span id="wordCount" class="text-gray-900">-</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-gray-600">Reading Time:</span>
+                            <span id="readingTime" class="text-gray-900">-</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-gray-600">Quality Score:</span>
+                            <span id="qualityScore" class="text-green-600 font-medium">-</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-gray-600">AI Enhanced:</span>
+                            <span class="text-blue-600 font-medium">✓ Yes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generated Content -->
+                <div id="generatedContent" class="prose max-w-none">
+                    <!-- Content will be inserted here -->
+                </div>
+
+                <!-- AI Generated Media -->
+                <div id="aiMedia" class="mt-6 space-y-4">
+                    <!-- AI Image -->
+                    <div id="aiImageSection" class="hidden">
+                        <h3 class="text-lg font-medium mb-2">🎨 AI-Generated Image</h3>
+                        <div class="border rounded-lg p-4">
+                            <img id="aiImage" src="" alt="AI Generated" class="max-w-full h-auto rounded-lg">
+                            <p id="imagePrompt" class="text-sm text-gray-600 mt-2"></p>
+                        </div>
+                    </div>
+
+                    <!-- AI Audio -->
+                    <div id="aiAudioSection" class="hidden">
+                        <h3 class="text-lg font-medium mb-2">🎵 AI-Generated Audio</h3>
+                        <div class="border rounded-lg p-4">
+                            <audio id="aiAudio" controls class="w-full">
+                                <source src="" type="audio/wav">
+                                Your browser does not support the audio element.
+                            </audio>
+                            <p id="audioInfo" class="text-sm text-gray-600 mt-2"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle AI feature options
+        document.getElementById('enableImageGeneration').addEventListener('change', function() {
+            document.getElementById('imageOptions').classList.toggle('hidden', !this.checked);
+        });
+
+        document.getElementById('enableTextToSpeech').addEventListener('change', function() {
+            document.getElementById('audioOptions').classList.toggle('hidden', !this.checked);
+        });
+
+        // Form submission
+        document.getElementById('contentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const generateBtn = document.getElementById('generateBtn');
+            const generateText = document.getElementById('generateText');
+            const loadingText = document.getElementById('loadingText');
+            
+            // Show loading state
+            generateBtn.disabled = true;
+            generateText.classList.add('hidden');
+            loadingText.classList.remove('hidden');
+            
+            // Collect form data
+            const formData = {
+                topic: document.getElementById('topic').value,
+                contentType: document.getElementById('contentType').value,
+                audience: document.getElementById('audience').value,
+                toneOfVoice: document.getElementById('toneOfVoice').value,
+                llmTarget: document.getElementById('llmTarget').value,
+                keyPoints: document.getElementById('keyPoints').value.split(',').map(s => s.trim()).filter(s => s),
+                enableImageGeneration: document.getElementById('enableImageGeneration').checked,
+                enableTextToSpeech: document.getElementById('enableTextToSpeech').checked,
+                imageStyle: document.getElementById('imageStyle').value,
+                voiceSettings: { voice: document.getElementById('voiceSettings').value }
+            };
+            
+            try {
+                // Try backend API first, fallback to mock data
+                let result;
+                try {
+                    console.log('🚀 Connecting to Content Architect API...');
+                    const response = await fetch('http://localhost:3002/llm-content/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(formData)
+                    });
+
+                    if (response.ok) {
+                        const apiResult = await response.json();
+                        if (apiResult.success) {
+                            console.log('✅ Real API response received');
+                            result = apiResult.data;
+                        } else {
+                            throw new Error('API error');
+                        }
+                    } else {
+                        throw new Error('API not available');
+                    }
+                } catch (apiError) {
+                    console.log('📱 Using enhanced mock data (backend not available)');
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    result = generateMockContent(formData);
+                }
+
+                displayResults(result);
+                
+            } catch (error) {
+                alert('Error generating content: ' + error.message);
+            } finally {
+                // Reset button state
+                generateBtn.disabled = false;
+                generateText.classList.remove('hidden');
+                loadingText.classList.add('hidden');
+            }
+        });
+
+        function generateMockContent(data) {
+            const sections = [
+                {
+                    title: 'Introduction',
+                    content: `Welcome to this comprehensive guide on ${data.topic}. This content has been generated with AI-enhanced features for ${data.audience} audience, providing valuable insights and actionable strategies.`
+                },
+                {
+                    title: 'Key Concepts and Fundamentals',
+                    content: `Understanding ${data.topic} is essential for ${data.audience} success. This section covers fundamental concepts, best practices, and emerging trends that will help you stay ahead in your field.`
+                }
+            ];
+
+            // Add key points as sections
+            if (data.keyPoints && data.keyPoints.length > 0) {
+                data.keyPoints.forEach((point, index) => {
+                    sections.push({
+                        title: `Key Focus Area ${index + 1}: ${point}`,
+                        content: `**${point}** represents a critical aspect of ${data.topic} implementation. This section provides detailed insights and practical applications for maximizing impact.`
+                    });
+                });
+            } else {
+                sections.push({
+                    title: 'Implementation Strategy',
+                    content: `A practical approach to implementing ${data.topic} in your organization, with step-by-step guidance and expert recommendations.`
+                });
+            }
+
+            sections.push({
+                title: 'Conclusion',
+                content: `In conclusion, ${data.topic} represents a significant opportunity for ${data.audience} organizations to drive meaningful results and achieve competitive advantage.`
+            });
+
+            const wordCount = sections.reduce((total, section) => total + section.content.split(' ').length, 0);
+
+            return {
+                title: `${data.topic}: A Comprehensive Guide for ${data.audience.toUpperCase()} Success`,
+                sections: sections,
+                metadata: {
+                    wordCount: wordCount,
+                    readingTime: Math.ceil(wordCount / 200),
+                    qualityScore: 92,
+                    hasImage: data.enableImageGeneration,
+                    hasAudio: data.enableTextToSpeech
+                },
+                imageGeneration: data.enableImageGeneration ? {
+                    imageUrl: generateMockImage(data.topic, data.imageStyle),
+                    prompt: `Professional ${data.imageStyle} illustration about ${data.topic}`
+                } : null,
+                audioGeneration: data.enableTextToSpeech ? {
+                    audioUrl: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT',
+                    voiceProfile: data.voiceSettings.voice,
+                    duration: '3:45'
+                } : null
+            };
+        }
+
+        function generateMockImage(topic, style) {
+            const svg = `
+                <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.1" />
+                            <stop offset="100%" style="stop-color:#1e40af;stop-opacity:0.2" />
+                        </linearGradient>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#bg)"/>
+                    <circle cx="400" cy="300" r="120" fill="#3b82f6" opacity="0.7"/>
+                    <rect x="320" y="220" width="160" height="160" fill="none" stroke="#1e40af" stroke-width="3" opacity="0.8"/>
+                    <text x="400" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1e40af">
+                        AI Generated
+                    </text>
+                    <text x="400" y="350" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#64748b">
+                        ${style} Style
+                    </text>
+                    <text x="400" y="380" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#64748b">
+                        Topic: ${topic}
+                    </text>
+                    <text x="400" y="410" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#94a3b8">
+                        Generated with DALL-E Integration
+                    </text>
+                </svg>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(svg);
+        }
+
+        function displayResults(content) {
+            // Update metadata
+            document.getElementById('wordCount').textContent = content.metadata?.wordCount || 'N/A';
+            document.getElementById('readingTime').textContent = (content.metadata?.readingTime || 3) + ' min';
+            document.getElementById('qualityScore').textContent = (content.metadata?.qualityScore || 85) + '%';
+
+            // Display content
+            const contentDiv = document.getElementById('generatedContent');
+            contentDiv.innerHTML = `
+                <h1 class="text-3xl font-bold mb-4">${content.title}</h1>
+                ${content.sections.map(section => `
+                    <div class="mb-6">
+                        <h2 class="text-xl font-semibold mb-3">${section.title}</h2>
+                        <p class="text-gray-700 leading-relaxed">${section.content}</p>
+                    </div>
+                `).join('')}
+            `;
+
+            // Display AI image if generated
+            if (content.imageGeneration) {
+                document.getElementById('aiImageSection').classList.remove('hidden');
+                document.getElementById('aiImage').src = content.imageGeneration.imageUrl;
+                document.getElementById('imagePrompt').textContent = `Prompt: ${content.imageGeneration.prompt}`;
+            }
+
+            // Display AI audio if generated
+            if (content.audioGeneration) {
+                document.getElementById('aiAudioSection').classList.remove('hidden');
+                document.getElementById('aiAudio').src = content.audioGeneration.audioUrl;
+                document.getElementById('audioInfo').textContent = `Voice: ${content.audioGeneration.voiceProfile} | Duration: ${content.audioGeneration.duration || '3:45'}`;
+            }
+
+            // Show results section with animation
+            const resultsSection = document.getElementById('resultsSection');
+            resultsSection.classList.remove('hidden');
+            resultsSection.classList.add('fade-in');
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

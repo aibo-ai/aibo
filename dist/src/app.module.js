@@ -14,8 +14,12 @@ const bottom_layer_module_1 = require("./components/bottom-layer/bottom-layer.mo
 const middle_layer_module_1 = require("./components/middle-layer/middle-layer.module");
 const top_layer_module_1 = require("./components/top-layer/top-layer.module");
 const technical_seo_validator_module_1 = require("./modules/technical-seo-validator/technical-seo-validator.module");
+const image_generation_module_1 = require("./components/image-generation/image-generation.module");
+const audio_generation_module_1 = require("./components/audio-generation/audio-generation.module");
 const shared_module_1 = require("./shared/shared.module");
 const common_module_1 = require("./common/common.module");
+const integrations_module_1 = require("./integrations/integrations.module");
+const internal_module_1 = require("./internal/internal.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -28,11 +32,15 @@ exports.AppModule = AppModule = __decorate([
             }),
             shared_module_1.SharedModule,
             common_module_1.CommonModule,
+            integrations_module_1.IntegrationsModule,
+            internal_module_1.InternalModule,
             orchestrator_module_1.OrchestratorModule,
             bottom_layer_module_1.BottomLayerModule,
             middle_layer_module_1.MiddleLayerModule,
             top_layer_module_1.TopLayerModule,
             technical_seo_validator_module_1.TechnicalSeoValidatorModule,
+            image_generation_module_1.ImageGenerationModule,
+            audio_generation_module_1.AudioGenerationModule,
         ],
         controllers: [],
         providers: [],

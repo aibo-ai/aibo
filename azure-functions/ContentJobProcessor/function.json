@@ -1,0 +1,22 @@
+{
+  "bindings": [
+    {
+      "name": "myQueueItem",
+      "type": "serviceBusTrigger",
+      "direction": "in",
+      "queueName": "content-jobs",
+      "connection": "ServiceBusConnection",
+      "isSessionsEnabled": true,
+      "cardinality": "one"
+    }
+  ],
+  "scriptFile": "../dist/ContentJobProcessor/index.js",
+  "entryPoint": "default",
+  "retry": {
+    "strategy": "exponentialBackoff",
+    "maxRetryCount": 3,
+    "minimumInterval": "00:00:05",
+    "maximumInterval": "00:05:00"
+  },
+  "timeout": "00:10:00"
+}

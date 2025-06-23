@@ -17,9 +17,9 @@ export class MiddleLayerController {
 
   @Post('structure-bluf')
   @ApiOperation({ summary: 'Structure content using BLUF methodology' })
-  @ApiBody({ 
+  @ApiBody({
     schema: {
-      type: 'object', 
+      type: 'object',
       properties: {
         content: { type: 'object', description: 'Content to structure' },
         segment: { type: 'string', enum: ['b2b', 'b2c'], description: 'Target segment' },
@@ -31,7 +31,36 @@ export class MiddleLayerController {
   @ApiResponse({ status: 201, description: 'Content structured successfully' })
   async structureContentBluf(@Body() data: any) {
     return this.blufContentStructurerService.structureWithBluf(
-      data.content, 
+      data.content,
+      data.segment,
+      data.contentType
+    );
+  }
+
+  @Post('structure-content')
+  @ApiOperation({ summary: 'Structure content (orchestration alias)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Content topic' },
+        keyPoints: { type: 'array', items: { type: 'string' }, description: 'Key points to cover' },
+        segment: { type: 'string', enum: ['b2b', 'b2c'], description: 'Target segment' },
+        contentType: { type: 'string', description: 'Type of content' },
+      },
+      required: ['segment'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Content structured successfully' })
+  async structureContent(@Body() data: any) {
+    const content = {
+      topic: data.topic,
+      keyPoints: data.keyPoints || [],
+      rawContent: `Content about ${data.topic} for ${data.segment} audience`
+    };
+
+    return this.blufContentStructurerService.structureWithBluf(
+      content,
       data.segment,
       data.contentType
     );
@@ -73,6 +102,27 @@ export class MiddleLayerController {
   })
   @ApiResponse({ status: 201, description: 'Content optimized for conversational use' })
   async optimizeForConversation(@Body() data: any) {
+    return this.conversationalQueryOptimizerService.optimizeForConversationalQueries(
+      data.content,
+      data.targetQueries
+    );
+  }
+
+  @Post('optimize-conversational')
+  @ApiOperation({ summary: 'Optimize content for conversational queries (orchestration alias)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'object', description: 'Content to optimize' },
+        targetQueries: { type: 'array', items: { type: 'string' }, description: 'Target queries to optimize for' },
+        segment: { type: 'string', enum: ['b2b', 'b2c'], description: 'Target segment' },
+      },
+      required: ['content', 'targetQueries'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Content optimized for conversational use' })
+  async optimizeConversational(@Body() data: any) {
     return this.conversationalQueryOptimizerService.optimizeForConversationalQueries(
       data.content,
       data.targetQueries

@@ -22,9 +22,23 @@ import SuccessPage from './pages/SuccessPage';
 import DashboardPage from './pages/DashboardPage';
 
 // LLM Content Features
-import LlmContentRoutes from './routes/LlmContentRoutes';
 import LlmContentGenerator from './components/LlmContentGenerator/LlmContentGenerator';
 import LlmContentAnalyzer from './components/LlmContentAnalyzer/LlmContentAnalyzer';
+
+// Competition X Features
+import CompetitionXDashboard from './components/CompetitionX/CompetitionXDashboard';
+import CompetitorAnalysis from './components/CompetitionX/CompetitorAnalysis';
+import RealTimeMonitoring from './components/CompetitionX/RealTimeMonitoring';
+
+// Product X Features
+import ProductXDashboard from './components/ProductX/ProductXDashboard';
+import MarketResearchDashboard from './components/ProductX/MarketResearchDashboard';
+import CompetitiveIntelligenceDashboard from './components/ProductX/CompetitiveIntelligenceDashboard';
+import TrendAnalysisDashboard from './components/ProductX/TrendAnalysisDashboard';
+import UserProfileDashboard from './components/ProductX/UserProfileDashboard';
+import AudienceExpansionDashboard from './components/ProductX/AudienceExpansionDashboard';
+import MediaIntelligenceDashboard from './components/ProductX/MediaIntelligenceDashboard';
+import StrategicRecommendationsDashboard from './components/ProductX/StrategicRecommendationsDashboard';
 
 
 
@@ -86,6 +100,27 @@ const App: React.FC = () => {
                 <Route index element={<Navigate to="/llm-content/generate" replace />} />
                 <Route path="generate" element={<LlmContentGenerator />} />
                 <Route path="analyze" element={<LlmContentAnalyzer />} />
+              </Route>
+
+              {/* Competition X Feature Routes */}
+              <Route path="competition-x">
+                <Route index element={<CompetitionXDashboard />} />
+                <Route path="analysis" element={<CompetitorAnalysis />} />
+                <Route path="intelligence" element={<CompetitorAnalysis />} />
+                <Route path="monitoring" element={<RealTimeMonitoring />} />
+              </Route>
+
+              {/* Product X - Sleep Company Feature Routes */}
+              <Route path="product-x">
+                <Route index element={<ProductXDashboard />} />
+                <Route path="dashboard" element={<ProductXDashboard />} />
+                <Route path="market-research" element={<MarketResearchDashboard />} />
+                <Route path="competitive-intelligence" element={<CompetitiveIntelligenceDashboard />} />
+                <Route path="trend-analysis" element={<TrendAnalysisDashboard />} />
+                <Route path="user-profiles" element={<UserProfileDashboard />} />
+                <Route path="audience-expansion" element={<AudienceExpansionDashboard />} />
+                <Route path="media-intelligence" element={<MediaIntelligenceDashboard />} />
+                <Route path="strategic-recommendations" element={<StrategicRecommendationsDashboard />} />
               </Route>
             </Route>
           </Routes>

@@ -53,8 +53,38 @@ export class BottomLayerController {
       region: 'us',
       skipCache: false
     };
-    
+
     return this.freshnessAggregatorService.aggregateFreshContent(params);
+  }
+
+  @Post('aggregate-freshness')
+  @ApiOperation({ summary: 'Aggregate fresh content with POST method for orchestration' })
+  async aggregateFreshness(
+    @Body() params: { topic: string; timeRange?: string; sources?: string[]; segment: Segment },
+  ) {
+    const aggregationParams = {
+      query: params.topic,
+      limit: 15,
+      contentTypes: undefined, // Use default content types from service
+      timeframe: undefined, // Use default timeframe from service
+      language: 'en',
+      region: 'us',
+      skipCache: false
+    };
+
+    return this.freshnessAggregatorService.aggregateFreshContent(aggregationParams);
+  }
+
+  @Post('analyze-keywords')
+  @ApiOperation({ summary: 'Analyze keywords for a topic (orchestration endpoint)' })
+  async analyzeKeywords(
+    @Body() params: { topic: string; searchKeywords?: string[]; segment: Segment },
+  ) {
+    // Use the existing analyze-content endpoint but with topic as content
+    return this.keywordTopicAnalyzerService.analyzeContent(
+      params.topic,
+      params.segment,
+    );
   }
 
   @Post('calculate-freshness')

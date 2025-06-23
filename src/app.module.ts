@@ -5,11 +5,15 @@ import { BottomLayerModule } from './components/bottom-layer/bottom-layer.module
 import { MiddleLayerModule } from './components/middle-layer/middle-layer.module';
 import { TopLayerModule } from './components/top-layer/top-layer.module';
 import { TechnicalSeoValidatorModule } from './modules/technical-seo-validator/technical-seo-validator.module';
+import { ImageGenerationModule } from './components/image-generation/image-generation.module';
+import { AudioGenerationModule } from './components/audio-generation/audio-generation.module';
 // TODO: Create or import these modules when implementing user and API integration features
 // import { ApiIntegrationModule } from './components/api-integration/api-integration.module';
 // import { UserModule } from './components/user/user.module';
 import { SharedModule } from './shared/shared.module';
 import { CommonModule } from './common/common.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
@@ -22,6 +26,8 @@ import { CommonModule } from './common/common.module';
     // Shared Services and Integrations
     SharedModule,
     CommonModule,
+    IntegrationsModule,
+    InternalModule,
     
     // Core Architectural Layers
     OrchestratorModule,
@@ -29,6 +35,8 @@ import { CommonModule } from './common/common.module';
     MiddleLayerModule,
     TopLayerModule,
     TechnicalSeoValidatorModule,
+    ImageGenerationModule,
+    AudioGenerationModule,
     // TODO: Uncomment these when the modules are created
     // ApiIntegrationModule,
     

@@ -1,0 +1,235 @@
+# Flux GitOps configuration for Content Creation Platform
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+  labels:
+    app.kubernetes.io/instance: flux-system
+    app.kubernetes.io/part-of: flux
+    app.kubernetes.io/version: v2.1.0
+---
+# Git Repository Source
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: content-platform-repo
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: https://github.com/your-org/content-creation-platform
+  secretRef:
+    name: git-credentials
+---
+# Kustomization for infrastructure
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: "./k8s/infrastructure"
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  validation: client
+  healthChecks:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: prometheus
+    namespace: monitoring
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: grafana
+    namespace: monitoring
+---
+# Kustomization for applications
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: applications
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: "./k8s"
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  validation: client
+  dependsOn:
+  - name: infrastructure
+  healthChecks:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: content-platform-backend
+    namespace: content-platform
+---
+# Image Repository for automated updates
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: content-platform-backend
+  namespace: flux-system
+spec:
+  image: contentplatformacr.azurecr.io/content-creation-platform
+  interval: 1m
+  secretRef:
+    name: acr-credentials
+---
+# Image Policy for semantic versioning
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: content-platform-backend
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: content-platform-backend
+  policy:
+    semver:
+      range: '>=1.0.0'
+---
+# Image Update Automation
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: content-platform-backend
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: content-platform-repo
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: |
+        Automated image update
+        
+        Automation name: {{ .AutomationObject }}
+        
+        Files:
+        {{ range $filename, $_ := .Updated.Files -}}
+        - {{ $filename }}
+        {{ end -}}
+        
+        Objects:
+        {{ range $resource, $_ := .Updated.Objects -}}
+        - {{ $resource.Kind }} {{ $resource.Name }}
+        {{ end -}}
+        
+        Images:
+        {{ range .Updated.Images -}}
+        - {{.}}
+        {{ end -}}
+    push:
+      branch: main
+  update:
+    path: "./k8s"
+    strategy: Setters
+---
+# Helm Repository for additional charts
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://prometheus-community.github.io/helm-charts
+---
+# Helm Release for Prometheus Operator (alternative to manual setup)
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "51.x"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  targetNamespace: monitoring
+  createNamespace: true
+  values:
+    prometheus:
+      prometheusSpec:
+        retention: 30d
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: default
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 50Gi
+    grafana:
+      adminPassword: admin123
+      persistence:
+        enabled: true
+        storageClassName: default
+        size: 10Gi
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+          - name: 'content-platform'
+            orgId: 1
+            folder: 'Content Platform'
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/content-platform
+      dashboards:
+        content-platform:
+          content-platform-overview:
+            gnetId: 15757
+            revision: 1
+            datasource: Prometheus
+    alertmanager:
+      alertmanagerSpec:
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: default
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 10Gi
+---
+# Secret for Git credentials (to be created manually or via external-secrets)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: flux-system
+type: Opaque
+data:
+  # Base64 encoded values
+  username: Z2l0aHVi  # github
+  password: Z2hwX3h4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==  # ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+---
+# Secret for ACR credentials (to be created manually or via external-secrets)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: acr-credentials
+  namespace: flux-system
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJjb250ZW50cGxhdGZvcm1hY3IuYXp1cmVjci5pbyI6eyJ1c2VybmFtZSI6ImNvbnRlbnRwbGF0Zm9ybWFjciIsInBhc3N3b3JkIjoieW91ci1hY3ItcGFzc3dvcmQiLCJhdXRoIjoiWTI5dWRHVnVkSEJzWVhSbWIzSnRZV055T25sdmRYSXRZV055TFhCaGMzTjNiM0prIn19fQ==

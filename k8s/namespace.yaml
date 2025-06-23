@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: content-platform
+  labels:
+    name: content-platform
+    environment: production
+    app.kubernetes.io/name: content-creation-platform
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: kubernetes
+  annotations:
+    description: "Content Creation Platform namespace"
+    contact: "platform-team@company.com"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: content-platform-staging
+  labels:
+    name: content-platform-staging
+    environment: staging
+    app.kubernetes.io/name: content-creation-platform
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: kubernetes
+  annotations:
+    description: "Content Creation Platform staging namespace"
+    contact: "platform-team@company.com"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: content-platform-dev
+  labels:
+    name: content-platform-dev
+    environment: development
+    app.kubernetes.io/name: content-creation-platform
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: kubernetes
+  annotations:
+    description: "Content Creation Platform development namespace"
+    contact: "platform-team@company.com"

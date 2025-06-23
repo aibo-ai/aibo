@@ -1,0 +1,503 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "applicationInsightsAppId": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Insights Application ID"
+      }
+    },
+    "applicationInsightsApiKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Application Insights API Key"
+      }
+    },
+    "contentArchitectApiUrl": {
+      "type": "string",
+      "defaultValue": "https://api.contentarchitect.com",
+      "metadata": {
+        "description": "Content Architect API Base URL"
+      }
+    },
+    "slackWebhookUrl": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Slack webhook URL for notifications"
+      }
+    },
+    "emailRecipients": {
+      "type": "array",
+      "defaultValue": ["admin@contentarchitect.com"],
+      "metadata": {
+        "description": "Email recipients for alerts"
+      }
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 5
+      },
+      "metadata": {
+        "description": "Trigger every 5 minutes to check performance metrics"
+      }
+    }
+  },
+  "actions": {
+    "Query_Application_Insights": {
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://api.applicationinsights.io/v1/apps/@{parameters('applicationInsightsAppId')}/query",
+        "headers": {
+          "X-API-Key": "@{parameters('applicationInsightsApiKey')}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "query": "let timeRange = 5m; let errorThreshold = 10; let slowResponseThreshold = 5000; let highErrorRate = requests | where timestamp > ago(timeRange) | summarize TotalRequests = count(), FailedRequests = countif(success == false) | extend ErrorRate = (FailedRequests * 100.0) / TotalRequests | where ErrorRate > errorThreshold; let slowResponses = requests | where timestamp > ago(timeRange) and duration > slowResponseThreshold | summarize SlowRequestCount = count(); let performanceIssues = customEvents | where timestamp > ago(timeRange) and name == 'FeedbackLoop:PerformanceIssueDetected' | summarize IssueCount = count(); let jobFailures = customEvents | where timestamp > ago(timeRange) and name == 'JobFailed' | summarize FailedJobs = count(); union highErrorRate, slowResponses, performanceIssues, jobFailures"
+        }
+      },
+      "runAfter": {},
+      "metadata": {
+        "description": "Query Application Insights for performance issues"
+      }
+    },
+    "Parse_Query_Results": {
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Query_Application_Insights')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "tables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {"type": "string"},
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {"type": "string"},
+                        "type": {"type": "string"}
+                      }
+                    }
+                  },
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Query_Application_Insights": ["Succeeded"]
+      },
+      "metadata": {
+        "description": "Parse the Application Insights query results"
+      }
+    },
+    "Check_For_Issues": {
+      "type": "Condition",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(body('Parse_Query_Results')?['tables']?[0]?['rows'])",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Process_Performance_Issues": {
+          "type": "Foreach",
+          "foreach": "@body('Parse_Query_Results')?['tables']?[0]?['rows']",
+          "actions": {
+            "Determine_Issue_Type": {
+              "type": "Switch",
+              "expression": "@string(items('Process_Performance_Issues')[0])",
+              "cases": {
+                "High_Error_Rate": {
+                  "case": "ErrorRate",
+                  "actions": {
+                    "Send_Error_Rate_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "High Error Rate",
+                        "severity": "Critical",
+                        "message": "Error rate exceeded threshold: @{items('Process_Performance_Issues')[2]}%",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Investigate failed requests and system health"
+                      }
+                    }
+                  }
+                },
+                "Slow_Responses": {
+                  "case": "SlowRequestCount",
+                  "actions": {
+                    "Send_Slow_Response_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Slow Response Times",
+                        "severity": "Warning",
+                        "message": "Detected @{items('Process_Performance_Issues')[0]} slow responses (>5s)",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Check system performance and optimize bottlenecks"
+                      }
+                    }
+                  }
+                },
+                "Performance_Issues": {
+                  "case": "IssueCount",
+                  "actions": {
+                    "Send_Performance_Issue_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Content Performance Issues",
+                        "severity": "Warning",
+                        "message": "Detected @{items('Process_Performance_Issues')[0]} content performance issues",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Review content quality and optimization strategies"
+                      }
+                    }
+                  }
+                },
+                "ML_Model_Performance_Degradation": {
+                  "case": "MLModelDegradation",
+                  "actions": {
+                    "Send_ML_Performance_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "ML Model Performance Degradation",
+                        "severity": "Critical",
+                        "message": "ML model accuracy dropped below threshold: @{items('Process_Performance_Issues')[2]}%",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Review model performance and consider retraining"
+                      }
+                    }
+                  }
+                },
+                "Fact_Check_Accuracy_Drop": {
+                  "case": "FactCheckAccuracyDrop",
+                  "actions": {
+                    "Send_Fact_Check_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Fact Check Accuracy Drop",
+                        "severity": "High",
+                        "message": "Fact checking accuracy below 90%: @{items('Process_Performance_Issues')[2]}%",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Review fact checking sources and algorithms"
+                      }
+                    }
+                  }
+                },
+                "Blockchain_Verification_Delays": {
+                  "case": "BlockchainDelays",
+                  "actions": {
+                    "Send_Blockchain_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Blockchain Verification Delays",
+                        "severity": "Medium",
+                        "message": "Blockchain verification taking longer than expected: @{items('Process_Performance_Issues')[2]}s average",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Check blockchain network status and gas prices"
+                      }
+                    }
+                  }
+                },
+                "Citation_Quality_Decline": {
+                  "case": "CitationQualityDrop",
+                  "actions": {
+                    "Send_Citation_Quality_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Citation Quality Decline",
+                        "severity": "Medium",
+                        "message": "Citation quality score dropped: @{items('Process_Performance_Issues')[2]}%",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Review citation sources and verification algorithms"
+                      }
+                    }
+                  }
+                },
+                "Content_Engagement_Drop": {
+                  "case": "EngagementDrop",
+                  "actions": {
+                    "Send_Engagement_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Content Engagement Drop",
+                        "severity": "Medium",
+                        "message": "Content engagement below expected levels: @{items('Process_Performance_Issues')[2]}%",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Review content optimization strategies and audience targeting"
+                      }
+                    }
+                  }
+                },
+                "Job_Failures": {
+                  "case": "FailedJobs",
+                  "actions": {
+                    "Send_Job_Failure_Alert": {
+                      "type": "Compose",
+                      "inputs": {
+                        "alertType": "Job Processing Failures",
+                        "severity": "High",
+                        "message": "Detected @{items('Process_Performance_Issues')[0]} failed jobs",
+                        "timestamp": "@utcNow()",
+                        "actionRequired": "Check job processing pipeline and retry failed jobs"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Send_Slack_Notification": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@parameters('slackWebhookUrl')",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "text": "🚨 Content Architect Alert",
+                  "attachments": [
+                    {
+                      "color": "@{if(equals(outputs('Determine_Issue_Type')?['severity'], 'Critical'), 'danger', if(equals(outputs('Determine_Issue_Type')?['severity'], 'High'), 'warning', 'good'))}",
+                      "fields": [
+                        {
+                          "title": "Alert Type",
+                          "value": "@{outputs('Determine_Issue_Type')?['alertType']}",
+                          "short": true
+                        },
+                        {
+                          "title": "Severity",
+                          "value": "@{outputs('Determine_Issue_Type')?['severity']}",
+                          "short": true
+                        },
+                        {
+                          "title": "Message",
+                          "value": "@{outputs('Determine_Issue_Type')?['message']}",
+                          "short": false
+                        },
+                        {
+                          "title": "Action Required",
+                          "value": "@{outputs('Determine_Issue_Type')?['actionRequired']}",
+                          "short": false
+                        },
+                        {
+                          "title": "Timestamp",
+                          "value": "@{outputs('Determine_Issue_Type')?['timestamp']}",
+                          "short": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "runAfter": {
+                "Determine_Issue_Type": ["Succeeded"]
+              }
+            },
+            "Send_Email_Alert": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['office365']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/v2/Mail",
+                "body": {
+                  "To": "@join(parameters('emailRecipients'), ';')",
+                  "Subject": "Content Architect Alert: @{outputs('Determine_Issue_Type')?['alertType']}",
+                  "Body": "<html><body><h2>Content Architect Performance Alert</h2><table border='1' cellpadding='5'><tr><td><strong>Alert Type:</strong></td><td>@{outputs('Determine_Issue_Type')?['alertType']}</td></tr><tr><td><strong>Severity:</strong></td><td>@{outputs('Determine_Issue_Type')?['severity']}</td></tr><tr><td><strong>Message:</strong></td><td>@{outputs('Determine_Issue_Type')?['message']}</td></tr><tr><td><strong>Action Required:</strong></td><td>@{outputs('Determine_Issue_Type')?['actionRequired']}</td></tr><tr><td><strong>Timestamp:</strong></td><td>@{outputs('Determine_Issue_Type')?['timestamp']}</td></tr></table><p>Please investigate and take appropriate action.</p><p><a href='@{parameters('contentArchitectApiUrl')}/health'>Check System Health</a></p></body></html>",
+                  "Importance": "@{if(equals(outputs('Determine_Issue_Type')?['severity'], 'Critical'), 'High', 'Normal')}"
+                }
+              },
+              "runAfter": {
+                "Send_Slack_Notification": ["Succeeded"]
+              }
+            },
+            "Trigger_Auto_Remediation": {
+              "type": "Switch",
+              "expression": "@outputs('Determine_Issue_Type')?['alertType']",
+              "cases": {
+                "Job_Failures": {
+                  "case": "Job Processing Failures",
+                  "actions": {
+                    "Retry_Failed_Jobs": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('contentArchitectApiUrl')}/internal/jobs/retry-failed",
+                        "headers": {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer @{parameters('internalApiToken')}"
+                        },
+                        "body": {
+                          "maxRetries": 3,
+                          "timeRange": "5m"
+                        }
+                      }
+                    }
+                  }
+                },
+                "Performance_Issues": {
+                  "case": "Content Performance Issues",
+                  "actions": {
+                    "Trigger_Performance_Analysis": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('contentArchitectApiUrl')}/internal/feedback/analyze-trends",
+                        "headers": {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer @{parameters('internalApiToken')}"
+                        },
+                        "body": {
+                          "timeRange": "1h",
+                          "generateRecommendations": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "ML_Model_Issues": {
+                  "case": "ML Model Performance Degradation",
+                  "actions": {
+                    "Trigger_Model_Retraining": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('contentArchitectApiUrl')}/internal/ml/trigger-retraining",
+                        "headers": {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer @{parameters('internalApiToken')}"
+                        },
+                        "body": {
+                          "modelType": "content_optimizer",
+                          "priority": "high",
+                          "reason": "performance_degradation"
+                        }
+                      }
+                    }
+                  }
+                },
+                "Fact_Check_Issues": {
+                  "case": "Fact Check Accuracy Drop",
+                  "actions": {
+                    "Update_Fact_Check_Sources": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('contentArchitectApiUrl')}/internal/fact-check/refresh-sources",
+                        "headers": {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer @{parameters('internalApiToken')}"
+                        },
+                        "body": {
+                          "refreshTrustedSources": true,
+                          "validateSourceCredibility": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "Blockchain_Issues": {
+                  "case": "Blockchain Verification Delays",
+                  "actions": {
+                    "Switch_Blockchain_Network": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('contentArchitectApiUrl')}/internal/blockchain/optimize-network",
+                        "headers": {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer @{parameters('internalApiToken')}"
+                        },
+                        "body": {
+                          "checkNetworkStatus": true,
+                          "optimizeGasPrices": true,
+                          "considerNetworkSwitch": true
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Send_Email_Alert": ["Succeeded"]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Log_No_Issues": {
+            "type": "Compose",
+            "inputs": {
+              "message": "No performance issues detected",
+              "timestamp": "@utcNow()",
+              "status": "healthy"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Parse_Query_Results": ["Succeeded"]
+      }
+    },
+    "Update_Health_Dashboard": {
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "@{parameters('contentArchitectApiUrl')}/internal/health/update-status",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer @{parameters('internalApiToken')}"
+        },
+        "body": {
+          "timestamp": "@utcNow()",
+          "status": "@{if(greater(length(body('Parse_Query_Results')?['tables']?[0]?['rows']), 0), 'issues_detected', 'healthy')}",
+          "issueCount": "@length(body('Parse_Query_Results')?['tables']?[0]?['rows'])",
+          "lastChecked": "@utcNow()"
+        }
+      },
+      "runAfter": {
+        "Check_For_Issues": ["Succeeded"]
+      }
+    }
+  },
+  "outputs": {
+    "healthStatus": {
+      "type": "string",
+      "value": "@{if(greater(length(body('Parse_Query_Results')?['tables']?[0]?['rows']), 0), 'issues_detected', 'healthy')}"
+    },
+    "issueCount": {
+      "type": "int",
+      "value": "@length(body('Parse_Query_Results')?['tables']?[0]?['rows'])"
+    },
+    "lastExecuted": {
+      "type": "string",
+      "value": "@utcNow()"
+    }
+  }
+}

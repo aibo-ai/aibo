@@ -75,6 +75,150 @@ export class OrchestratorController {
     return this.performanceMonitoringService.getPerformanceStatus(contentId);
   }
 
+  @Post('feedback/external')
+  @ApiOperation({ summary: 'Record external feedback on generated content' })
+  async recordExternalFeedback(
+    @Body() feedback: {
+      contentId: string;
+      source: 'user_rating' | 'analytics' | 'social_media' | 'conversion_tracking';
+      metrics: {
+        engagementRate?: number;
+        conversionRate?: number;
+        userSatisfaction?: number;
+        socialShares?: number;
+        timeOnPage?: number;
+        bounceRate?: number;
+        clickThroughRate?: number;
+      };
+      metadata?: {
+        platform?: string;
+        audience?: 'b2b' | 'b2c';
+        contentType?: string;
+        timestamp?: string;
+      };
+    }
+  ) {
+    return this.feedbackLoopService.recordPerformanceMetrics({
+      contentId: feedback.contentId,
+      timestamp: feedback.metadata?.timestamp || new Date().toISOString(),
+      source: feedback.source,
+      metrics: feedback.metrics,
+      metadata: feedback.metadata || {}
+    });
+  }
+
+  @Post('feedback/continuous-improvement')
+  @ApiOperation({ summary: 'Trigger continuous improvement process' })
+  async triggerContinuousImprovement() {
+    return this.feedbackLoopService.runContinuousImprovementProcess();
+  }
+
+  @Get('feedback/optimization-suggestions')
+  @ApiOperation({ summary: 'Get optimization suggestions for content type and audience' })
+  async getOptimizationSuggestions(
+    @Query('contentType') contentType: string,
+    @Query('audience') audience: 'b2b' | 'b2c'
+  ) {
+    return this.feedbackLoopService.getOptimizationSuggestions(contentType, audience);
+  }
+
+  @Get('feedback/trend-analysis')
+  @ApiOperation({ summary: 'Get comprehensive trend analysis' })
+  async getTrendAnalysis(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string
+  ) {
+    const range = {
+      start: startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      end: endDate ? new Date(endDate) : new Date()
+    };
+
+    return this.feedbackLoopService.analyzeTrends(range);
+  }
+
+  @Post('feedback/batch-metrics')
+  @ApiOperation({ summary: 'Record batch performance metrics from external systems' })
+  async recordBatchMetrics(
+    @Body() batchData: {
+      metrics: Array<{
+        contentId: string;
+        timestamp: string;
+        source: string;
+        metrics: any;
+        metadata?: any;
+      }>;
+      batchId?: string;
+      source: string;
+    }
+  ) {
+    const results = [];
+
+    for (const metric of batchData.metrics) {
+      try {
+        const result = await this.feedbackLoopService.recordPerformanceMetrics({
+          contentId: metric.contentId,
+          timestamp: metric.timestamp,
+          source: metric.source,
+          metrics: metric.metrics,
+          metadata: {
+            ...metric.metadata,
+            batchId: batchData.batchId,
+            batchSource: batchData.source
+          }
+        });
+        results.push({ contentId: metric.contentId, status: 'success', result });
+      } catch (error) {
+        results.push({
+          contentId: metric.contentId,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+
+    return {
+      batchId: batchData.batchId,
+      totalMetrics: batchData.metrics.length,
+      successful: results.filter(r => r.status === 'success').length,
+      failed: results.filter(r => r.status === 'error').length,
+      results
+    };
+  }
+
+  @Get('feedback/performance-dashboard')
+  @ApiOperation({ summary: 'Get comprehensive performance dashboard data' })
+  async getPerformanceDashboard(
+    @Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '24h'
+  ) {
+    const timeRangeMs = {
+      '1h': 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000
+    };
+
+    const range = {
+      start: new Date(Date.now() - timeRangeMs[timeRange]),
+      end: new Date()
+    };
+
+    const [trendAnalysis, optimizationSuggestions] = await Promise.all([
+      this.feedbackLoopService.analyzeTrends(range),
+      this.feedbackLoopService.getOptimizationSuggestions('general', 'b2b')
+    ]);
+
+    return {
+      timeRange,
+      range: {
+        start: range.start.toISOString(),
+        end: range.end.toISOString()
+      },
+      trendAnalysis,
+      optimizationSuggestions,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
   @Post('performance/aggregate')
   @ApiOperation({ summary: 'Aggregate performance metrics for multiple content pieces' })
   async aggregatePerformance(

@@ -1,0 +1,276 @@
+global:
+  smtp_smarthost: 'smtp.office365.com:587'
+  smtp_from: 'alerts@contentplatform.com'
+  smtp_auth_username: 'alerts@contentplatform.com'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+# Templates for alert notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routing configuration
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default'
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      repeat_interval: 30m
+      routes:
+        # Application down alerts need immediate attention
+        - match:
+            alertname: ApplicationDown
+          receiver: 'immediate-response'
+          group_wait: 0s
+          repeat_interval: 5m
+        
+        # Security alerts
+        - match:
+            component: security
+          receiver: 'security-team'
+          group_wait: 0s
+          repeat_interval: 15m
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # Database alerts
+    - match:
+        component: database
+      receiver: 'database-team'
+      group_wait: 15s
+      repeat_interval: 1h
+
+    # Infrastructure alerts
+    - match:
+        component: kubernetes
+      receiver: 'infrastructure-team'
+      group_wait: 20s
+      repeat_interval: 1h
+
+# Inhibition rules to prevent alert spam
+inhibit_rules:
+  # Inhibit warning alerts if critical alerts are firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
+
+  # Inhibit individual pod alerts if deployment is down
+  - source_match:
+      alertname: 'ApplicationDown'
+    target_match_re:
+      alertname: '(PodNotReady|PodCrashLooping)'
+    equal: ['namespace']
+
+# Receiver configurations
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'platform-team@contentplatform.com'
+        subject: '[Content Platform] {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'platform-team@contentplatform.com,management@contentplatform.com'
+        subject: '[CRITICAL] Content Platform Alert'
+        body: |
+          🚨 CRITICAL ALERT 🚨
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Service: {{ .Labels.service }}
+          Component: {{ .Labels.component }}
+          
+          Runbook: {{ .Annotations.runbook_url }}
+          
+          Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#critical-alerts'
+        title: '🚨 Critical Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Service:* {{ .Labels.service }}
+          *Component:* {{ .Labels.component }}
+          {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+          {{ end }}
+        send_resolved: true
+
+    pagerduty_configs:
+      - routing_key: '${PAGERDUTY_INTEGRATION_KEY}'
+        description: '{{ .GroupLabels.alertname }}: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        severity: 'critical'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          service: '{{ .GroupLabels.service }}'
+          component: '{{ .GroupLabels.component }}'
+
+  - name: 'immediate-response'
+    email_configs:
+      - to: 'oncall@contentplatform.com'
+        subject: '[IMMEDIATE] Application Down - Content Platform'
+        body: |
+          🚨 IMMEDIATE RESPONSE REQUIRED 🚨
+          
+          The Content Platform application is DOWN and requires immediate attention.
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+          
+          Please check the application status immediately and follow the incident response procedure.
+
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#incident-response'
+        title: '🚨 IMMEDIATE: Application Down'
+        text: |
+          @channel The Content Platform application is DOWN!
+          
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Started:* {{ .StartsAt }}
+          {{ end }}
+          
+          Please respond immediately!
+        send_resolved: true
+
+    webhook_configs:
+      - url: 'https://hooks.slack.com/services/${SLACK_INCIDENT_WEBHOOK}'
+        send_resolved: true
+
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'platform-team@contentplatform.com'
+        subject: '[WARNING] Content Platform Alert'
+        body: |
+          ⚠️ WARNING ALERT ⚠️
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Service: {{ .Labels.service }}
+          Component: {{ .Labels.component }}
+          {{ end }}
+
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#platform-alerts'
+        title: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Service:* {{ .Labels.service }}
+          *Component:* {{ .Labels.component }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'security-team'
+    email_configs:
+      - to: 'security@contentplatform.com,platform-team@contentplatform.com'
+        subject: '[SECURITY] Content Platform Security Alert'
+        body: |
+          🔒 SECURITY ALERT 🔒
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Component: {{ .Labels.component }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+          
+          Please investigate immediately and follow security incident procedures.
+
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#security-alerts'
+        title: '🔒 Security Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          @security-team Security alert detected!
+          
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          *Started:* {{ .StartsAt }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'database-team'
+    email_configs:
+      - to: 'database-team@contentplatform.com,platform-team@contentplatform.com'
+        subject: '[DATABASE] Content Platform Database Alert'
+        body: |
+          🗄️ DATABASE ALERT 🗄️
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Component: {{ .Labels.component }}
+          {{ end }}
+
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#database-alerts'
+        title: '🗄️ Database Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  - name: 'infrastructure-team'
+    email_configs:
+      - to: 'infrastructure@contentplatform.com,platform-team@contentplatform.com'
+        subject: '[INFRASTRUCTURE] Content Platform Infrastructure Alert'
+        body: |
+          🏗️ INFRASTRUCTURE ALERT 🏗️
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Component: {{ .Labels.component }}
+          {{ end }}
+
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#infrastructure-alerts'
+        title: '🏗️ Infrastructure Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
