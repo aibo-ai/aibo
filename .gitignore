@@ -48,4 +48,3 @@ bin/
 obj/
 appsettings.json
 local.settings.json
-test-deployed-function.js
