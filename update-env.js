@@ -7,11 +7,11 @@ const envFilePath = path.join(__dirname, '.env');
 // New environment variables to add
 const newEnvVars = `
 # Added Azure OpenAI Key (2024-07-19)
-AZURE_OPENAI_KEY=7jyM5jIwKUBaEySW88oVpmhWXvl9WFkMQSxjkrGqWsjCHtb5qDHnJQQJ99BFAC77bzfXJ3w3AAAAACOGWt3u
+AZURE_OPENAI_KEY=process.env.AZURE_OPENAI_KEY
 
 # Added Azure Search Endpoint and Key (2024-07-19)
 AZURE_SEARCH_ENDPOINT=https://aibo-search.search.windows.net/
-AZURE_SEARCH_KEY=lqRymTRC0Z09GGCWUb5i8M81gfMjT087WJZgE0Wx7kAzSeC5yaYz
+AZURE_SEARCH_KEY=process.env.AZURE_SEARCH_KEY
 
 # Update OpenAI deployment name
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini
