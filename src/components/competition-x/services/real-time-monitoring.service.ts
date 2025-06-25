@@ -126,18 +126,19 @@ export class RealTimeMonitoringService {
       });
 
       const savedAlert = await this.monitoringAlertRepository.save(alert);
+      const alertResult = Array.isArray(savedAlert) ? savedAlert[0] : savedAlert;
 
       // Send notifications if configured
-      await this.sendAlertNotifications(savedAlert);
+      await this.sendAlertNotifications(alertResult);
 
       this.appInsights.trackEvent('CompetitionX:AlertCreated', {
-        alertId: savedAlert.id,
-        type: savedAlert.type,
-        severity: savedAlert.severity,
-        competitorId: savedAlert.competitorId
+        alertId: alertResult.id,
+        type: alertResult.type,
+        severity: alertResult.severity,
+        competitorId: alertResult.competitorId
       });
 
-      return savedAlert;
+      return alertResult;
 
     } catch (error) {
       this.logger.error(`Failed to create alert: ${error.message}`, error.stack);
@@ -564,7 +565,7 @@ export class RealTimeMonitoringService {
       actionRequired: false
     });
 
-    return testAlert.id;
+    return (testAlert as any).id;
   }
 
   async getNotificationHistory(timeRange: string, channel?: string) {

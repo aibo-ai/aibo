@@ -112,7 +112,7 @@ export class ImageGenerationController {
         audience: body.audience,
         keyPoints: body.keyPoints,
         style: 'infographic',
-        colorScheme: body.colorScheme || 'professional'
+        colorScheme: (body.colorScheme as 'professional' | 'vibrant' | 'minimal' | 'corporate') || 'professional'
       };
 
       const generatedImage = await this.dalleImageService.generateContentImage(request);

@@ -23,7 +23,16 @@ export class AdvancedFeaturesController {
     summary: 'Optimize content using ML models',
     description: 'Uses machine learning models to optimize content for engagement, readability, SEO, and conversion'
   })
-  @ApiBody({ type: ContentOptimizationRequest })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string' },
+        targetAudience: { type: 'string' },
+        optimizationGoals: { type: 'array', items: { type: 'string' } }
+      }
+    }
+  })
   @ApiResponse({ status: 200, description: 'Content optimization completed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid optimization request' })
   @ApiResponse({ status: 500, description: 'ML optimization service error' })
@@ -78,7 +87,15 @@ export class AdvancedFeaturesController {
     summary: 'Perform real-time fact checking',
     description: 'Verifies factual claims in content using trusted sources and real-time data'
   })
-  @ApiBody({ type: FactCheckRequest })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string' },
+        sources: { type: 'array', items: { type: 'string' } }
+      }
+    }
+  })
   @ApiResponse({ status: 200, description: 'Fact checking completed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid fact check request' })
   @ApiResponse({ status: 500, description: 'Fact checking service error' })
@@ -93,7 +110,16 @@ export class AdvancedFeaturesController {
     summary: 'Start real-time misinformation monitoring',
     description: 'Begins monitoring for misinformation patterns and suspicious content in real-time'
   })
-  @ApiBody({ type: RealTimeMonitoringConfig })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        enabled: { type: 'boolean' },
+        interval: { type: 'number' },
+        metrics: { type: 'array', items: { type: 'string' } }
+      }
+    }
+  })
   @ApiResponse({ status: 200, description: 'Real-time monitoring started successfully' })
   async startRealTimeMonitoring(@Body() config: RealTimeMonitoringConfig) {
     this.logger.log(`Starting real-time monitoring with ${config.keywords.length} keywords`);
@@ -134,7 +160,16 @@ export class AdvancedFeaturesController {
     summary: 'Verify content on blockchain',
     description: 'Creates an immutable record of content on blockchain for authenticity verification'
   })
-  @ApiBody({ type: ContentVerificationRequest })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string' },
+        verificationLevel: { type: 'string' },
+        sources: { type: 'array', items: { type: 'string' } }
+      }
+    }
+  })
   @ApiResponse({ status: 200, description: 'Content verification submitted to blockchain' })
   @ApiResponse({ status: 400, description: 'Invalid verification request' })
   @ApiResponse({ status: 500, description: 'Blockchain verification service error' })

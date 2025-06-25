@@ -4,7 +4,23 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class SemanticRelationshipMapperService {
   constructor(private configService: ConfigService) {}
-  
+
+  /**
+   * Maps relationships for a given topic and audience
+   * @param topic The topic to map relationships for
+   * @param audience The target audience
+   */
+  async mapRelationships(topic: string, audience: 'b2b' | 'b2c'): Promise<any> {
+    console.log(`Mapping relationships for topic: ${topic}, audience: ${audience}`);
+
+    return {
+      topic,
+      audience,
+      relationships: this.generateTopicRelationships(topic, audience),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   /**
    * Maps relationships between concepts and entities
    * @param content Content to analyze for relationships
@@ -295,8 +311,35 @@ export class SemanticRelationshipMapperService {
   
   private getRandomSubset<T>(array: T[], count: number): T[] {
     if (!array.length) return [];
-    
+
     const shuffled = [...array].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(count, array.length));
+  }
+
+  /**
+   * Generates topic-specific relationships
+   * @param topic The topic to generate relationships for
+   * @param audience The target audience
+   */
+  private generateTopicRelationships(topic: string, audience: 'b2b' | 'b2c'): any[] {
+    const baseRelationships = [
+      { type: 'related_to', target: `${topic} best practices` },
+      { type: 'enables', target: `${topic} optimization` },
+      { type: 'requires', target: `${topic} strategy` }
+    ];
+
+    if (audience === 'b2b') {
+      return [
+        ...baseRelationships,
+        { type: 'integrates_with', target: `enterprise ${topic}` },
+        { type: 'supports', target: `${topic} ROI` }
+      ];
+    } else {
+      return [
+        ...baseRelationships,
+        { type: 'enhances', target: `${topic} experience` },
+        { type: 'simplifies', target: `${topic} usage` }
+      ];
+    }
   }
 }

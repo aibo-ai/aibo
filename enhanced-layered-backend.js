@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 const http = require('http');
 const url = require('url');
 

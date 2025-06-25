@@ -525,13 +525,15 @@ export class CompetitiveAnalyticsService {
           impact: insight.impact,
           confidence: insight.confidence,
           category: 'competitive_analysis',
-          data: {
-            analysisId: analysisResult.analysisId,
-            analysisType: analysisResult.analysisType,
-            actionable: insight.actionable
-          },
           isActionable: insight.actionable,
-          generatedBy: 'competitive_analytics'
+          generatedBy: 'competitive_analytics',
+          data: {
+            metrics: { analysisId: analysisResult.analysisId },
+            trends: { analysisType: analysisResult.analysisType },
+            comparisons: { actionable: insight.actionable },
+            forecasts: {},
+            recommendations: [insight.recommendation || insight.insight]
+          }
         });
         
         await this.marketInsightRepository.save(marketInsight);

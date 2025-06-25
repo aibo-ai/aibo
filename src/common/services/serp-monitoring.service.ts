@@ -539,8 +539,8 @@ export class SerpMonitoringService {
 
       const competitorFeatures = Array.from(competitorMap.entries())
         .map(([competitor, features]) => ({
-          competitor,
-          features: Array.from(features)
+          competitor: competitor as string,
+          features: Array.from(features) as string[]
         }))
         .slice(0, 10);
 

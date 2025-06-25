@@ -87,11 +87,8 @@ export class HealthController {
       const statusCode = detailedHealth.status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
       res.status(statusCode).json(detailedHealth);
     } catch (error) {
-      this.appInsights.trackException({
-        exception: error,
-        properties: {
-          operation: 'detailed_health_check',
-        },
+      this.appInsights.trackException(error, {
+        operation: 'detailed_health_check',
       });
 
       res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
@@ -193,7 +190,7 @@ export class HealthController {
 
     // Check database
     try {
-      await this.db.pingCheck('database')();
+      await this.db.pingCheck('database');
       dependencies.database = { status: 'healthy', responseTime: 0 };
     } catch (error) {
       dependencies.database = { status: 'unhealthy', error: error.message };

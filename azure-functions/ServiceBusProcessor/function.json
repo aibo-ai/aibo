@@ -1,0 +1,20 @@
+{
+  "bindings": [
+    {
+      "name": "myQueueItem",
+      "type": "serviceBusTrigger",
+      "direction": "in",
+      "queueName": "content-processing",
+      "connection": "ServiceBusConnection"
+    },
+    {
+      "name": "outputDocument",
+      "type": "cosmosDB",
+      "direction": "out",
+      "databaseName": "content-architect",
+      "collectionName": "processing-results",
+      "connectionStringSetting": "AZURE_COSMOS_CONNECTION_STRING",
+      "createIfNotExists": true
+    }
+  ]
+}

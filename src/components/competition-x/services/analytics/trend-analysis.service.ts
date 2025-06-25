@@ -334,7 +334,7 @@ export class TrendAnalysisService {
             insights.push({
               type: 'correlation' as const,
               metric,
-              description: `Strong ${correlation > 0 ? 'positive' : 'negative'} correlation between ${metric} and ${otherMetric}`,
+              description: `Strong ${(correlation as number) > 0 ? 'positive' : 'negative'} correlation between ${metric} and ${otherMetric}`,
               significance: 'medium' as const,
               confidence: Math.abs(correlation as number),
               timeframe: request.timeRange,

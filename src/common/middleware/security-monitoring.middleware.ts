@@ -28,6 +28,7 @@ export class SecurityMonitoringMiddleware implements NestMiddleware {
   use(req: SecurityRequest, res: Response, next: NextFunction): void {
     const startTime = Date.now();
     const correlationId = this.generateCorrelationId();
+    const that = this;
     
     // Add security context to request
     req.securityContext = {
@@ -48,12 +49,12 @@ export class SecurityMonitoringMiddleware implements NestMiddleware {
 
     // Override res.end to capture response information
     const originalEnd = res.end;
-    res.end = function(chunk?: any, encoding?: any) {
+    res.end = function(chunk?: any, encoding?: any): any {
       const duration = Date.now() - startTime;
       const statusCode = res.statusCode;
 
       // Track API security event
-      securityMonitoring.trackApiSecurityEvent(
+      that.securityMonitoring.trackApiSecurityEvent(
         endpoint,
         method,
         statusCode,
@@ -70,7 +71,7 @@ export class SecurityMonitoringMiddleware implements NestMiddleware {
 
       // Track specific security events based on response
       if (statusCode === 401) {
-        securityMonitoring.trackAuthenticationEvent(
+        that.securityMonitoring.trackAuthenticationEvent(
           'login_failure',
           userId,
           ipAddress,
@@ -80,7 +81,7 @@ export class SecurityMonitoringMiddleware implements NestMiddleware {
       }
 
       if (statusCode === 403) {
-        securityMonitoring.trackSecurityEvent({
+        that.securityMonitoring.trackSecurityEvent({
           eventType: 'access_denied',
           severity: 'medium',
           description: `Access denied to ${method} ${endpoint}`,
@@ -97,11 +98,11 @@ export class SecurityMonitoringMiddleware implements NestMiddleware {
 
       // Track data access for compliance
       if (statusCode >= 200 && statusCode < 300) {
-        trackDataAccessForCompliance(req, userId, ipAddress);
+        that.trackDataAccessForCompliance(req, userId, ipAddress);
       }
 
       // Call original end method
-      originalEnd.call(this, chunk, encoding);
+      return originalEnd.call(this, chunk, encoding);
     };
 
     next();

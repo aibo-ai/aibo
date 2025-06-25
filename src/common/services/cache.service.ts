@@ -52,11 +52,19 @@ export class CacheService {
     }
   }
 
-  async clear(): Promise<void> {
+  async clear(prefix?: string): Promise<boolean> {
     try {
-      this.cache.clear();
+      if (prefix) {
+        // Clear only keys with the specified prefix
+        const keysToDelete = Array.from(this.cache.keys()).filter(key => key.startsWith(prefix));
+        keysToDelete.forEach(key => this.cache.delete(key));
+      } else {
+        this.cache.clear();
+      }
+      return true;
     } catch (error) {
       this.logger.error('Error clearing cache:', error);
+      return false;
     }
   }
 
@@ -123,6 +131,53 @@ export class CacheService {
       if (now > item.expiry) {
         this.cache.delete(key);
       }
+    }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Test cache functionality
+      const testKey = 'health-check-test';
+      const testValue = 'test-value';
+
+      await this.set(testKey, testValue, { ttl: 1 });
+      const retrieved = await this.get(testKey);
+      await this.del(testKey);
+
+      return retrieved === testValue;
+    } catch (error) {
+      this.logger.error('Cache health check failed:', error);
+      return false;
+    }
+  }
+
+  async getStats(): Promise<{
+    hits: number;
+    misses: number;
+    keys: number;
+    memory: string;
+    uptime: number;
+  }> {
+    try {
+      const memoryUsage = process.memoryUsage();
+      const uptime = process.uptime();
+
+      return {
+        hits: 0, // In-memory cache doesn't track hits/misses
+        misses: 0,
+        keys: this.cache.size,
+        memory: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+        uptime: Math.round(uptime)
+      };
+    } catch (error) {
+      this.logger.error('Error getting cache stats:', error);
+      return {
+        hits: 0,
+        misses: 0,
+        keys: 0,
+        memory: '0MB',
+        uptime: 0
+      };
     }
   }
 

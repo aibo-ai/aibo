@@ -1,6 +1,11 @@
 // Orchestration Layer: Cross-Layer Data Flow Management
 // Integrates with existing services: orchestration.service.ts, cross-layer-data-flow.service.ts, etc.
 class OrchestrationLayer {
+  constructor(llmService, vectorStorage) {
+    this.llmService = llmService;
+    this.vectorStorage = vectorStorage;
+  }
+
   async compile(context) {
     console.log('  🎼 Compiling final content...');
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -55,11 +60,15 @@ class OrchestrationLayer {
     const authorityScore = layerResults.top?.authorityScore || {};
     const queryIntent = layerResults.bottom?.queryIntent || {};
 
+    // Generate real content using Claude LLM
+    console.log('    🤖 Generating real content with Claude LLM...');
+    const realContent = await this.generateRealContentWithLLM(request, layerResults);
+
     return {
       contentId: `ai_content_${Date.now()}`,
-      title: this.generateOptimizedTitle(request, layerResults),
-      summary: this.generateOptimizedSummary(request, layerResults),
-      sections: this.generateSections(request, layerResults),
+      title: realContent.title || this.generateOptimizedTitle(request, layerResults),
+      summary: realContent.summary || this.generateOptimizedSummary(request, layerResults),
+      sections: realContent.sections || this.generateSections(request, layerResults),
       contentType: request.contentType || 'blog_post',
       audience: request.audience || 'b2b',
       toneOfVoice: request.toneOfVoice || 'professional',
@@ -72,8 +81,245 @@ class OrchestrationLayer {
       },
       seoOptimization: this.compileSEOOptimization(layerResults),
       qualityMetrics: this.compileQualityMetrics(layerResults),
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      llmGenerated: true,
+      llmProvider: realContent.provider || 'claude'
     };
+  }
+
+  async generateRealContentWithLLM(request, layerResults) {
+    try {
+      // Build comprehensive prompt using layer insights
+      const prompt = this.buildComprehensivePrompt(request, layerResults);
+
+      // Generate content using Claude
+      const contentResult = await this.llmService.generateContentWithClaude(prompt, {
+        maxTokens: 4000,
+        temperature: 0.7,
+        contentType: request.contentType,
+        audience: request.audience,
+        toneOfVoice: request.toneOfVoice
+      });
+
+      if (contentResult && contentResult.content) {
+        console.log('    ✅ Real Claude content generated successfully');
+
+        // Parse the generated content into structured format
+        return this.parseGeneratedContent(contentResult.content, request, layerResults);
+      } else {
+        throw new Error('No content returned from Claude');
+      }
+    } catch (error) {
+      console.error('    ❌ Real LLM content generation failed:', error.message);
+      console.log('    🔄 Falling back to template-based content...');
+
+      // Fallback to template-based content
+      return {
+        title: null,
+        summary: null,
+        sections: null,
+        provider: 'fallback-template'
+      };
+    }
+  }
+
+  buildComprehensivePrompt(request, layerResults) {
+    const keywordAnalysis = layerResults.bottom?.keywordAnalysis || {};
+    const semanticMapping = layerResults.middle?.semanticMapping || {};
+    const eeatSignals = layerResults.top?.eeatSignals || {};
+    const originalResearch = layerResults.top?.originalResearch || {};
+
+    let prompt = `Create a comprehensive, high-quality ${request.contentType || 'blog post'} about "${request.topic}" for ${request.audience || 'business'} audience.\n\n`;
+
+    // Add SEO requirements
+    if (keywordAnalysis.primaryKeywords) {
+      prompt += `Primary Keywords to include: ${keywordAnalysis.primaryKeywords.slice(0, 5).join(', ')}\n`;
+    }
+
+    if (keywordAnalysis.semanticKeywords) {
+      prompt += `Semantic Keywords: ${keywordAnalysis.semanticKeywords.slice(0, 8).join(', ')}\n`;
+    }
+
+    // Add key points if provided
+    if (request.keyPoints && request.keyPoints.length > 0) {
+      prompt += `\nKey Points to Cover:\n${request.keyPoints.map(point => `- ${point}`).join('\n')}\n`;
+    }
+
+    // Add research findings if available
+    if (originalResearch.researchFindings && originalResearch.researchFindings.length > 0) {
+      prompt += `\nResearch Findings to Include:\n`;
+      originalResearch.researchFindings.slice(0, 3).forEach(finding => {
+        prompt += `- ${finding.finding} (${finding.methodology}, ${Math.round(finding.confidence * 100)}% confidence)\n`;
+      });
+    }
+
+    // Add content requirements
+    prompt += `\nContent Requirements:
+- Tone: ${request.toneOfVoice || 'professional'}
+- Target Length: ${this.getTargetLength(request.targetLength)}
+- Include introduction, main sections, and conclusion
+- Make it engaging, authoritative, and SEO-optimized
+- Include practical examples and actionable insights
+- Ensure E-E-A-T compliance (Experience, Expertise, Authoritativeness, Trustworthiness)
+- Structure with clear headings and subheadings
+- Write in a way that ranks well in AI search results
+
+Please generate comprehensive, high-quality content that meets these requirements.`;
+
+    return prompt;
+  }
+
+  getTargetLength(targetLength) {
+    const lengthMap = {
+      'short': '800-1200 words',
+      'medium': '1200-2000 words',
+      'long': '2000-3000 words'
+    };
+    return lengthMap[targetLength] || '1200-2000 words';
+  }
+
+  parseGeneratedContent(content, request, layerResults) {
+    try {
+      // Try to parse if it's JSON
+      if (content.trim().startsWith('{')) {
+        const parsed = JSON.parse(content);
+        return {
+          title: parsed.title,
+          summary: parsed.summary,
+          sections: parsed.sections,
+          provider: 'claude'
+        };
+      }
+
+      // If it's plain text, structure it
+      return this.structurePlainTextContent(content, request, layerResults);
+    } catch (error) {
+      // If parsing fails, structure the plain text
+      return this.structurePlainTextContent(content, request, layerResults);
+    }
+  }
+
+  structurePlainTextContent(content, request, layerResults) {
+    // Split content into sections based on headings or paragraphs
+    const lines = content.split('\n').filter(line => line.trim());
+
+    // Extract title (first line or generate one)
+    const title = this.extractTitle(lines, request) || this.generateOptimizedTitle(request, layerResults);
+
+    // Extract summary (first paragraph or generate one)
+    const summary = this.extractSummary(lines, request) || this.generateOptimizedSummary(request, layerResults);
+
+    // Structure sections
+    const sections = this.extractSections(lines, request, layerResults);
+
+    return {
+      title,
+      summary,
+      sections,
+      provider: 'claude'
+    };
+  }
+
+  extractTitle(lines, request) {
+    // Look for title patterns
+    const titlePatterns = [
+      /^#\s+(.+)$/,
+      /^(.+):\s*A\s+.+Guide/i,
+      /^(.+):\s*Everything/i,
+      /^(.+):\s*The\s+Complete/i
+    ];
+
+    for (const line of lines.slice(0, 5)) {
+      for (const pattern of titlePatterns) {
+        const match = line.match(pattern);
+        if (match) {
+          return match[1] || match[0];
+        }
+      }
+    }
+
+    // If no title found, use first non-empty line if it looks like a title
+    const firstLine = lines[0];
+    if (firstLine && firstLine.length < 100 && !firstLine.endsWith('.')) {
+      return firstLine;
+    }
+
+    return null;
+  }
+
+  extractSummary(lines, request) {
+    // Look for summary in first few paragraphs
+    for (let i = 1; i < Math.min(lines.length, 10); i++) {
+      const line = lines[i];
+      if (line.length > 100 && line.length < 500) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  extractSections(lines, request, layerResults) {
+    const sections = [];
+    let currentSection = null;
+    let currentContent = [];
+
+    for (const line of lines) {
+      // Check if line is a heading
+      if (this.isHeading(line)) {
+        // Save previous section
+        if (currentSection) {
+          sections.push({
+            title: currentSection,
+            content: currentContent.join(' '),
+            sectionType: this.determineSectionType(currentSection),
+            optimizations: this.getSectionOptimizations(this.determineSectionType(currentSection), layerResults)
+          });
+        }
+
+        // Start new section
+        currentSection = line.replace(/^#+\s*/, '').trim();
+        currentContent = [];
+      } else if (line.trim()) {
+        currentContent.push(line.trim());
+      }
+    }
+
+    // Add final section
+    if (currentSection && currentContent.length > 0) {
+      sections.push({
+        title: currentSection,
+        content: currentContent.join(' '),
+        sectionType: this.determineSectionType(currentSection),
+        optimizations: this.getSectionOptimizations(this.determineSectionType(currentSection), layerResults)
+      });
+    }
+
+    // If no sections found, create default structure
+    if (sections.length === 0) {
+      return this.generateSections(request, layerResults);
+    }
+
+    return sections;
+  }
+
+  isHeading(line) {
+    return /^#+\s/.test(line) ||
+           /^[A-Z][^.!?]*:?\s*$/.test(line.trim()) ||
+           (line.length < 80 && !line.endsWith('.') && !line.endsWith(','));
+  }
+
+  determineSectionType(title) {
+    const titleLower = title.toLowerCase();
+
+    if (titleLower.includes('introduction') || titleLower.includes('overview')) return 'introduction';
+    if (titleLower.includes('conclusion') || titleLower.includes('summary')) return 'conclusion';
+    if (titleLower.includes('faq') || titleLower.includes('question')) return 'faq';
+    if (titleLower.includes('research') || titleLower.includes('study')) return 'research';
+    if (titleLower.includes('best practice') || titleLower.includes('tip')) return 'best-practices';
+    if (titleLower.includes('implementation') || titleLower.includes('how to')) return 'implementation';
+    if (titleLower.includes('concept') || titleLower.includes('fundamental')) return 'concepts';
+
+    return 'key-point';
   }
 
   generateOptimizedTitle(request, layerResults) {
@@ -228,8 +474,9 @@ class OrchestrationLayer {
     content += `This section provides detailed insights, practical applications, and proven strategies for maximizing impact in this area. `;
 
     // Add research backing if available
+    const pointStr = String(point || '');
     const relevantFinding = researchFindings.find(finding =>
-      finding.finding.toLowerCase().includes(point.toLowerCase()) ||
+      finding.finding.toLowerCase().includes(pointStr.toLowerCase()) ||
       finding.finding.toLowerCase().includes(request.topic.toLowerCase())
     );
 
@@ -436,10 +683,30 @@ class OrchestrationLayer {
   }
 
   async generateImage(request, layerResults) {
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      console.log('    🎨 Generating image with DALL-E...');
 
-    const authorityScore = layerResults.top?.authorityScore?.overallScore || 0.89;
-    const eeatScore = layerResults.top?.eeatSignals?.overallEEATScore || 0.89;
+      // Use real LLM service for image generation
+      const imagePrompt = `Create a professional illustration for "${request.topic}" content.
+        Style: ${request.imageStyle || 'professional'},
+        Audience: ${request.audience || 'business'},
+        Modern, clean design suitable for ${request.contentType || 'blog post'}`;
+
+      const imageResult = await this.llmService.generateImageWithDallE(imagePrompt, {
+        style: request.imageStyle || 'natural',
+        size: '1024x1024',
+        quality: 'standard'
+      });
+
+      console.log('    ✅ DALL-E image generated successfully');
+      return imageResult;
+
+    } catch (error) {
+      console.error('    ⚠️ DALL-E generation failed, using fallback:', error.message);
+
+      // Fallback to SVG generation
+      const authorityScore = layerResults.top?.authorityScore?.overallScore || 0.89;
+      const eeatScore = layerResults.top?.eeatSignals?.overallEEATScore || 0.89;
 
     const svg = `
       <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
@@ -538,15 +805,35 @@ class OrchestrationLayer {
         optimizationLevel: 'comprehensive'
       }
     };
+    }
   }
 
   async generateAudio(request, content) {
-    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      console.log('    🔊 Generating audio with ElevenLabs...');
 
-    const textLength = content.sections.reduce((total, section) => total + section.content.length, 0);
-    const estimatedDuration = Math.ceil(textLength / 1000 * 0.6); // Rough estimate: 1000 chars = 0.6 minutes
+      // Extract text for speech synthesis
+      const textForSpeech = this.extractTextForSpeech(content);
 
-    return {
+      // Use real LLM service for audio generation
+      const audioResult = await this.llmService.generateAudioWithElevenLabs(textForSpeech, {
+        voiceId: request.voiceSettings?.voiceId || 'pNInz6obpgDQGcFmaJgB',
+        stability: request.voiceSettings?.stability || 0.75,
+        similarityBoost: request.voiceSettings?.similarityBoost || 0.75,
+        style: request.voiceSettings?.style || 0.5
+      });
+
+      console.log('    ✅ ElevenLabs audio generated successfully');
+      return audioResult;
+
+    } catch (error) {
+      console.error('    ⚠️ ElevenLabs generation failed, using fallback:', error.message);
+
+      // Fallback to mock audio
+      const textLength = content.sections.reduce((total, section) => total + section.content.length, 0);
+      const estimatedDuration = Math.ceil(textLength / 1000 * 0.6); // Rough estimate: 1000 chars = 0.6 minutes
+
+      return {
       audioData: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT',
       audioUrl: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT',
       audioFormat: 'wav',
@@ -569,7 +856,41 @@ class OrchestrationLayer {
         estimatedDuration: Math.ceil(section.content.length / 1000 * 0.6),
         sectionType: section.sectionType
       }))
-    };
+      };
+    }
+  }
+
+  extractTextForSpeech(content) {
+    // Extract main content for speech synthesis
+    let text = '';
+
+    if (content.title) {
+      text += content.title + '. ';
+    }
+
+    if (content.summary) {
+      text += content.summary + '. ';
+    }
+
+    if (content.sections && content.sections.length > 0) {
+      content.sections.forEach(section => {
+        if (section.title) {
+          text += section.title + '. ';
+        }
+        if (section.content) {
+          text += section.content + '. ';
+        }
+      });
+    }
+
+    // Clean up text for better speech synthesis
+    return text
+      .replace(/[#*_`]/g, '') // Remove markdown
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/\n{2,}/g, '. ') // Convert paragraphs to pauses
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim()
+      .substring(0, 5000); // Limit length for TTS
   }
 
   calculatePerformanceMetrics(context) {

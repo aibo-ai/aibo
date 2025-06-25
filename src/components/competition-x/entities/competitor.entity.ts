@@ -28,6 +28,9 @@ export class Competitor {
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   marketShare: number;
 
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  revenue: number;
+
   @Column({ type: 'varchar', length: 50, default: 'medium' })
   threatLevel: string; // 'low', 'medium', 'high', 'critical'
 

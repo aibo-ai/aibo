@@ -1,0 +1,21 @@
+{
+  "bindings": [
+    {
+      "type": "cosmosDBTrigger",
+      "name": "documents",
+      "direction": "in",
+      "leaseCollectionName": "leases",
+      "connectionStringSetting": "AZURE_COSMOS_CONNECTION_STRING",
+      "databaseName": "content-architect",
+      "collectionName": "content-requests",
+      "createLeaseCollectionIfNotExists": true
+    },
+    {
+      "type": "serviceBus",
+      "name": "outputSbQueue",
+      "queueName": "content-processing",
+      "connection": "ServiceBusConnection",
+      "direction": "out"
+    }
+  ]
+}

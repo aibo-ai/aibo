@@ -4,7 +4,26 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class KeywordTopicAnalyzerService {
   constructor(private configService: ConfigService) {}
-  
+
+  /**
+   * Analyzes keywords for a given topic
+   * @param topic The topic to analyze keywords for
+   * @param segment B2B or B2C segment
+   */
+  async analyzeKeywords(topic: string, segment: 'b2b' | 'b2c'): Promise<any> {
+    console.log(`Analyzing keywords for topic: ${topic}, segment: ${segment}`);
+
+    return {
+      topic,
+      segment,
+      keywords: this.extractKeywords(topic, segment, 15),
+      relatedTerms: this.extractRelatedTerms(topic, segment),
+      searchVolume: Math.floor(Math.random() * 10000) + 1000,
+      competition: Math.random(),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   /**
    * Analyzes content to extract key topics and keywords
    * @param content The content to analyze
@@ -400,5 +419,38 @@ export class KeywordTopicAnalyzerService {
     
     // If sentence is very short, just append
     return `${sentence} ${keyword}`;
+  }
+
+  /**
+   * Extracts related terms for a given topic
+   * @param topic The topic to find related terms for
+   * @param segment B2B or B2C segment
+   */
+  private extractRelatedTerms(topic: string, segment: 'b2b' | 'b2c'): string[] {
+    const baseTerms = [
+      `${topic} strategy`,
+      `${topic} best practices`,
+      `${topic} solutions`,
+      `${topic} implementation`,
+      `${topic} optimization`
+    ];
+
+    if (segment === 'b2b') {
+      return [
+        ...baseTerms,
+        `enterprise ${topic}`,
+        `${topic} ROI`,
+        `${topic} scalability`,
+        `${topic} integration`
+      ];
+    } else {
+      return [
+        ...baseTerms,
+        `${topic} tips`,
+        `${topic} guide`,
+        `${topic} benefits`,
+        `${topic} trends`
+      ];
+    }
   }
 }

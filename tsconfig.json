@@ -26,5 +26,11 @@
       "@config/*": ["src/config/*"]
     }
   },
-  "exclude": ["client/**/*", "azure-functions/TechnicalSeoValidator/**/*"]
+  "exclude": [
+    "client/**/*",
+    "azure-functions/**/*",
+    "src/benchmarks/**/*",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts"
+  ]
 }

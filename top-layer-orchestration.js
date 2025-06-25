@@ -1,6 +1,10 @@
 // Top Layer: Authority Signals
 // Integrates with existing services: e-e-a-t-signal-generator.service.ts, original-research-engine.service.ts, etc.
 class TopLayer {
+  constructor(llmService) {
+    this.llmService = llmService;
+  }
+
   async process(request, layerResults) {
     console.log('  🎯 E-E-A-T Signal Generator...');
     const eeatSignals = await this.generateEEATSignals(request, layerResults);

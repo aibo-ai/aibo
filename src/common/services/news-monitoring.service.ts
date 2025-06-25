@@ -568,7 +568,7 @@ export class NewsMonitoringService {
     
     // Look for company names (capitalized words)
     const companyPattern = /\b[A-Z][a-z]+ (?:Inc|Corp|LLC|Ltd|Company|Corporation|Technologies|Systems|Solutions|Group|Holdings)\b/g;
-    const companies = text.match(companyPattern) || [];
+    const companies: string[] = text.match(companyPattern) || [];
     companies.forEach(company => {
       entities.push({
         name: company,

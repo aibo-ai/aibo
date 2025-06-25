@@ -98,13 +98,7 @@ export class OrchestratorController {
       };
     }
   ) {
-    return this.feedbackLoopService.recordPerformanceMetrics({
-      contentId: feedback.contentId,
-      timestamp: feedback.metadata?.timestamp || new Date().toISOString(),
-      source: feedback.source,
-      metrics: feedback.metrics,
-      metadata: feedback.metadata || {}
-    });
+    return this.feedbackLoopService.collectPerformanceMetrics(feedback.contentId, feedback.metadata?.audience || 'b2b');
   }
 
   @Post('feedback/continuous-improvement')
@@ -133,7 +127,7 @@ export class OrchestratorController {
       end: endDate ? new Date(endDate) : new Date()
     };
 
-    return this.feedbackLoopService.analyzeTrends(range);
+    return this.feedbackLoopService.analyzeTrends(`${range.start.toISOString()}-${range.end.toISOString()}`);
   }
 
   @Post('feedback/batch-metrics')
@@ -155,17 +149,7 @@ export class OrchestratorController {
 
     for (const metric of batchData.metrics) {
       try {
-        const result = await this.feedbackLoopService.recordPerformanceMetrics({
-          contentId: metric.contentId,
-          timestamp: metric.timestamp,
-          source: metric.source,
-          metrics: metric.metrics,
-          metadata: {
-            ...metric.metadata,
-            batchId: batchData.batchId,
-            batchSource: batchData.source
-          }
-        });
+        const result = await this.feedbackLoopService.collectPerformanceMetrics(metric.contentId, 'b2b');
         results.push({ contentId: metric.contentId, status: 'success', result });
       } catch (error) {
         results.push({
@@ -203,7 +187,7 @@ export class OrchestratorController {
     };
 
     const [trendAnalysis, optimizationSuggestions] = await Promise.all([
-      this.feedbackLoopService.analyzeTrends(range),
+      this.feedbackLoopService.analyzeTrends(`${range.start.toISOString()}-${range.end.toISOString()}`),
       this.feedbackLoopService.getOptimizationSuggestions('general', 'b2b')
     ]);
 

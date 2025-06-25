@@ -238,7 +238,15 @@ export class EnhancedPerformanceMonitoringInterceptor implements NestInterceptor
     const method = request.method;
     const url = request.url;
     const correlationId = this.getOrCreateCorrelationId(request, response);
-    const operationContext = this.appInsights.getTelemetryClient()?.startOperation(`${method} ${this.sanitizeUrl(url)}`, correlationId);
+    // Track operation start
+    this.appInsights.getTelemetryClient()?.trackRequest({
+      name: `${method} ${this.sanitizeUrl(url)}`,
+      url: url,
+      duration: 0,
+      resultCode: 200,
+      success: true,
+      id: correlationId
+    });
 
     return next.handle().pipe(
       tap((data) => {
@@ -247,9 +255,14 @@ export class EnhancedPerformanceMonitoringInterceptor implements NestInterceptor
         
         this.trackDetailedPerformance(request, response, duration, data, correlationId);
         
-        if (operationContext) {
-          this.appInsights.getTelemetryClient()?.completeOperation(operationContext, true);
-        }
+        // Operation completed successfully - track success metrics
+        this.appInsights.getTelemetryClient()?.trackRequest({
+          name: `${method} ${this.sanitizeUrl(url)}`,
+          url: url,
+          duration: duration,
+          resultCode: 200,
+          success: true
+        });
       }),
       catchError((error) => {
         const endTime = process.hrtime.bigint();
@@ -257,9 +270,14 @@ export class EnhancedPerformanceMonitoringInterceptor implements NestInterceptor
         
         this.trackErrorPerformance(request, response, duration, error, correlationId);
         
-        if (operationContext) {
-          this.appInsights.getTelemetryClient()?.completeOperation(operationContext, false);
-        }
+        // Operation failed - track error metrics
+        this.appInsights.getTelemetryClient()?.trackRequest({
+          name: `${method} ${this.sanitizeUrl(url)}`,
+          url: url,
+          duration: duration,
+          resultCode: 500,
+          success: false
+        });
         
         throw error;
       })

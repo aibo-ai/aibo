@@ -4,7 +4,25 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class PlatformSpecificTunerService {
   constructor(private configService: ConfigService) {}
-  
+
+  /**
+   * Tunes content for a specific platform and audience
+   * @param topic The topic to tune for
+   * @param audience The target audience
+   * @param platform The target platform
+   */
+  async tuneForPlatform(topic: string, audience: 'b2b' | 'b2c', platform: string = 'chatgpt'): Promise<any> {
+    console.log(`Tuning ${topic} for ${platform} platform, ${audience} audience`);
+
+    return {
+      topic,
+      audience,
+      platform,
+      tuning: this.generatePlatformTuning(topic, audience, platform),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   /**
    * Optimizes content for a specific LLM platform
    * @param content Content to optimize
@@ -340,5 +358,33 @@ export class PlatformSpecificTunerService {
   private getRandomSubset<T>(array: T[], count: number): T[] {
     const shuffled = [...array].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(count, array.length));
+  }
+
+  /**
+   * Generates platform-specific tuning recommendations
+   * @param topic The topic to tune for
+   * @param audience The target audience
+   * @param platform The target platform
+   */
+  private generatePlatformTuning(topic: string, audience: 'b2b' | 'b2c', platform: string): any {
+    const baseTuning = {
+      contentStructure: 'optimized',
+      keywordDensity: 'balanced',
+      readabilityLevel: audience === 'b2b' ? 'professional' : 'accessible'
+    };
+
+    const platformSpecific = {
+      chatgpt: { conversationalTone: true, directAnswers: true },
+      perplexity: { citationReady: true, factualFocus: true },
+      gemini: { multimodalOptimized: true, contextAware: true },
+      grok: { personalityDriven: true, engagementFocused: true }
+    };
+
+    return {
+      ...baseTuning,
+      ...(platformSpecific[platform] || platformSpecific.chatgpt),
+      topic,
+      audience
+    };
   }
 }

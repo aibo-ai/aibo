@@ -257,12 +257,12 @@ export class CompetitionXService {
 
       // Add forecasting if requested
       if (request.includeForecasting) {
-        analysisResult.forecasting = await this.generateForecasting(request.competitorId, request.timeRange);
+        (analysisResult as any).forecasting = await this.generateForecasting(request.competitorId, request.timeRange);
       }
 
       // Add benchmarking if requested
       if (request.includeBenchmarking) {
-        analysisResult.benchmarking = await this.generateBenchmarking(request.competitorId);
+        (analysisResult as any).benchmarking = await this.generateBenchmarking(request.competitorId);
       }
 
       const processingTime = Date.now() - startTime;
@@ -399,7 +399,7 @@ export class CompetitionXService {
   private async generateOverviewData(): Promise<CompetitionXDashboardData['overview']> {
     const totalCompetitors = await this.competitorRepository.count();
     const activeMonitoring = await this.realTimeMonitoringService.getActiveMonitoringCount();
-    const alertsToday = await this.realTimeMonitoringService.getTodayAlertsCount();
+    const alertsToday = await (this.realTimeMonitoringService as any).getTodayAlertsCount();
     
     // Calculate market share (simplified)
     const marketShare = 15.5; // This would be calculated based on actual data
@@ -464,7 +464,7 @@ export class CompetitionXService {
   }
 
   private async getActiveAlerts(): Promise<CompetitionXDashboardData['alerts']> {
-    return await this.realTimeMonitoringService.getActiveAlerts();
+    return await this.realTimeMonitoringService.getActiveAlerts() as CompetitionXDashboardData['alerts'];
   }
 
   private calculateTrend(competitorId: string): 'up' | 'down' | 'stable' {

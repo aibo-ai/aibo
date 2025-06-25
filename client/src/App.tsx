@@ -40,6 +40,11 @@ import AudienceExpansionDashboard from './components/ProductX/AudienceExpansionD
 import MediaIntelligenceDashboard from './components/ProductX/MediaIntelligenceDashboard';
 import StrategicRecommendationsDashboard from './components/ProductX/StrategicRecommendationsDashboard';
 
+// API Integration Features
+import { MentionlyticsDashboard } from './components/Mentionlytics';
+import { MozSeoDashboard } from './components/MozSeo';
+import { ProductIntelligenceDashboard } from './components/RapidApi';
+
 
 
 // QueryProvider is now imported from './context/QueryProvider'
@@ -121,6 +126,22 @@ const App: React.FC = () => {
                 <Route path="audience-expansion" element={<AudienceExpansionDashboard />} />
                 <Route path="media-intelligence" element={<MediaIntelligenceDashboard />} />
                 <Route path="strategic-recommendations" element={<StrategicRecommendationsDashboard />} />
+              </Route>
+
+              {/* API Integration Feature Routes */}
+              <Route path="social-listening">
+                <Route index element={<MentionlyticsDashboard />} />
+                <Route path="mentionlytics" element={<MentionlyticsDashboard />} />
+              </Route>
+
+              <Route path="seo-optimizer">
+                <Route index element={<MozSeoDashboard />} />
+                <Route path="moz" element={<MozSeoDashboard />} />
+              </Route>
+
+              <Route path="product-intelligence">
+                <Route index element={<ProductIntelligenceDashboard />} />
+                <Route path="rapid-api" element={<ProductIntelligenceDashboard />} />
               </Route>
             </Route>
           </Routes>

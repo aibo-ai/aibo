@@ -107,18 +107,15 @@ export class MonitoringInterceptor implements NestInterceptor {
         );
 
         // Track error in Application Insights
-        this.appInsights.trackException({
-          exception: error,
-          properties: {
-            correlationId,
-            userAgent,
-            clientIp,
-            method,
-            url,
-            statusCode: statusCode.toString(),
-            processingTime: duration,
-            requestBody: this.sanitizeRequestBody(body),
-          },
+        this.appInsights.trackException(error, {
+          correlationId,
+          userAgent,
+          clientIp,
+          method,
+          url,
+          statusCode: statusCode.toString(),
+          processingTime: duration,
+          requestBody: this.sanitizeRequestBody(body),
         });
 
         // Track request with error

@@ -243,7 +243,7 @@ export class ContentArchitectController {
       
       return {
         jobId: job.id,
-        status: job.status,
+        status: job.status === 'cancelled' ? 'failed' : job.status,
         message: job.message || 'Job status retrieved',
         result: job.result,
         progress: job.progress,

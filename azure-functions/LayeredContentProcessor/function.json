@@ -1,0 +1,24 @@
+{
+  "bindings": [
+    {
+      "authLevel": "function",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": ["post"]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "res"
+    },
+    {
+      "type": "serviceBus",
+      "direction": "out",
+      "name": "outputSbMsg",
+      "queueName": "content-processing-queue",
+      "connection": "ServiceBusConnection"
+    }
+  ],
+  "scriptFile": "index.js"
+}

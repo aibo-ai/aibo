@@ -104,6 +104,24 @@ const productXNavItems: NavItem[] = [
   }
 ];
 
+const apiIntegrationNavItems: NavItem[] = [
+  {
+    title: 'Social Listening',
+    path: '/social-listening',
+    icon: '📱'
+  },
+  {
+    title: 'SEO Optimizer',
+    path: '/seo-optimizer',
+    icon: '🔍'
+  },
+  {
+    title: 'Product Intelligence',
+    path: '/product-intelligence',
+    icon: '🛍️'
+  }
+];
+
 const SiteNavigation: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
@@ -194,6 +212,25 @@ const SiteNavigation: React.FC = () => {
                   to={item.path}
                   className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
                     ? 'bg-emerald-50 text-emerald-600 border-l-4 border-emerald-600'
+                    : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  <span className="mr-3">{item.icon}</span>
+                  <span>{item.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          <div className="px-4 py-2 mt-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">API Integrations</h2>
+          </div>
+          <ul>
+            {apiIntegrationNavItems.map((item) => (
+              <li key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                    ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
                     : 'text-gray-700 hover:bg-gray-50'}`}
                 >
                   <span className="mr-3">{item.icon}</span>
@@ -318,6 +355,26 @@ const SiteNavigation: React.FC = () => {
                       to={item.path}
                       className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
                         ? 'bg-emerald-50 text-emerald-600 border-l-4 border-emerald-600'
+                        : 'text-gray-700 hover:bg-gray-50'}`}
+                      onClick={handleDrawerToggle}
+                    >
+                      <span className="mr-3">{item.icon}</span>
+                      <span>{item.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="px-4 py-2 mt-6">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">API Integrations</h2>
+              </div>
+              <ul>
+                {apiIntegrationNavItems.map((item) => (
+                  <li key={item.path}>
+                    <Link
+                      to={item.path}
+                      className={`flex items-center px-4 py-3 text-sm ${isActive(item.path)
+                        ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
                         : 'text-gray-700 hover:bg-gray-50'}`}
                       onClick={handleDrawerToggle}
                     >

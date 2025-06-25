@@ -346,7 +346,13 @@ export class OrchestrationService {
         return await this.contentChunker.chunkContent(content, request.audience);
         
       case 'freshnessAggregator':
-        return await this.freshnessAggregator.aggregateFreshness(request.topic, request.audience);
+        return await this.freshnessAggregator.aggregateFreshContent({
+          query: request.topic,
+          timeframe: {
+            startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            endDate: new Date()
+          }
+        });
         
       default:
         throw new Error(`Unknown bottom layer service: ${step.service}`);
@@ -369,7 +375,7 @@ export class OrchestrationService {
         
       case 'conversationalQueryOptimizer':
         const queries = context.layerResults.bottom?.keywordTopicAnalyzer?.queries || [request.topic];
-        return await this.conversationalQueryOptimizer.optimizeForConversational(queries, request.audience);
+        return await this.conversationalQueryOptimizer.optimizeForConversationalQueries(queries, [request.topic]);
         
       case 'semanticRelationshipMapper':
         return await this.semanticRelationshipMapper.mapRelationships(request.topic, request.audience);
@@ -377,9 +383,9 @@ export class OrchestrationService {
       case 'platformSpecificTuner':
         const platform = this.determinePlatform(request.contentType);
         return await this.platformSpecificTuner.tuneForPlatform(
-          { content: request.topic },
-          platform,
-          request.audience
+          request.topic,
+          request.audience,
+          platform
         );
         
       default:
@@ -409,7 +415,7 @@ export class OrchestrationService {
         
       case 'originalResearchEngine':
         if (request.includeResearch) {
-          return await this.originalResearchEngine.generateOriginalResearch(request.topic, request.audience);
+          return await this.originalResearchEngine.generateOriginalResearch(request.topic, request.contentType || 'article', request.audience);
         }
         return null;
         
@@ -422,14 +428,14 @@ export class OrchestrationService {
         
       case 'eeatSignalGenerator':
         if (request.includeEEAT) {
-          return await this.eeatSignalGenerator.generateEEATSignals(request.topic, request.audience);
+          return await this.eeatSignalGenerator.enhanceEeatSignals({ topic: request.topic }, request.audience);
         }
         return null;
         
       case 'schemaMarkupGenerator':
         if (request.includeSchemaMarkup) {
           const content = context.layerResults.top?.llmContentOptimizer?.optimizedContent || { topic: request.topic };
-          return await this.schemaMarkupGenerator.generateSchemaMarkup(content, request.contentType);
+          return await this.schemaMarkupGenerator.generateSchemaMarkup(content, request.contentType || 'article', request.audience);
         }
         return null;
         

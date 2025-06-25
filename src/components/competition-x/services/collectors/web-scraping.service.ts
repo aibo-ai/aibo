@@ -209,15 +209,14 @@ export class WebScrapingService {
         title: `${dataPoint} data from ${url}`,
         description: `Scraped ${dataPoint} information from competitor website`,
         data: scrapedContent,
-        metadata: {
-          scrapingMethod: 'automated',
-          dataPoint,
-          userAgent: config.userAgent,
-          timestamp: new Date().toISOString()
-        },
         processingStatus: 'raw',
         relevanceScore: this.calculateRelevanceScore(dataPoint),
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: {
+          confidence: 0.8,
+          relevance: this.calculateRelevanceScore(dataPoint),
+          language: 'en'
+        }
       });
 
       return competitiveData;

@@ -292,9 +292,9 @@ export class SocialMonitoringService {
         id: tweet.id,
         platform: 'twitter' as const,
         content: tweet.text,
-        author: user.username || 'Unknown',
-        authorFollowers: user.public_metrics?.followers_count,
-        url: `https://twitter.com/${user.username}/status/${tweet.id}`,
+        author: (user as any)?.username || 'Unknown',
+        authorFollowers: (user as any)?.public_metrics?.followers_count,
+        url: `https://twitter.com/${(user as any)?.username}/status/${tweet.id}`,
         publishedAt: tweet.created_at,
         sentiment: this.analyzeSentiment(tweet.text),
         sentimentScore: this.calculateSentimentScore(tweet.text),
@@ -307,8 +307,8 @@ export class SocialMonitoringService {
         mentions: this.extractMentions(tweet.text),
         hashtags: this.extractHashtags(tweet.text),
         language: tweet.lang || 'en',
-        location: user.location,
-        verified: user.verified || false
+        location: (user as any)?.location,
+        verified: (user as any)?.verified || false
       };
     });
   }

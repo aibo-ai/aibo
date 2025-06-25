@@ -78,9 +78,8 @@ export class AzureMonitoringService {
     try {
       this.telemetryClient.trackMetric({
         name: metric.name,
-        value: metric.value,
-        properties: metric.properties,
-        measurements: metric.measurements
+        value: typeof metric.value === 'number' ? metric.value : (typeof metric.measurements === 'number' ? metric.measurements : 0),
+        properties: metric.properties
       });
     } catch (error) {
       this.logger.error('Failed to track metric:', error);
@@ -140,6 +139,7 @@ export class AzureMonitoringService {
         data,
         duration,
         success,
+        resultCode: success ? 200 : 500,
         properties
       });
     } catch (error) {
@@ -165,7 +165,7 @@ export class AzureMonitoringService {
         name,
         url,
         duration,
-        responseCode,
+        resultCode: responseCode,
         success,
         properties
       });
@@ -419,7 +419,7 @@ export class AzureMonitoringService {
     if (!this.isInitialized) return '';
 
     try {
-      return this.telemetryClient.context.operation.id || '';
+      return (this.telemetryClient as any).context?.operation?.id || '';
     } catch (error) {
       this.logger.error('Failed to create correlation context:', error);
       return '';

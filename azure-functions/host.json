@@ -1,6 +1,10 @@
 {
   "version": "2.0",
   "functionTimeout": "00:10:00",
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[2.*, 3.0.0)"
+  },
   "logging": {
     "applicationInsights": {
       "samplingSettings": {
@@ -16,6 +20,13 @@
     }
   },
   "extensions": {
+    "cosmosDB": {
+      "connectionMode": "Gateway",
+      "protocol": "Https",
+      "leaseOptions": {
+        "leasePrefix": "prefix1"
+      }
+    },
     "serviceBus": {
       "prefetchCount": 100,
       "messageHandlerOptions": {

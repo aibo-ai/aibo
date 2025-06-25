@@ -55,6 +55,16 @@ export class LLMContentOptimizerService {
   ) {}
 
   /**
+   * Optimizes existing content for LLM consumption
+   * @param input The content input to optimize
+   */
+  async optimizeContent(input: LLMContentInput): Promise<LLMContentOutput> {
+    console.log(`Optimizing content for LLM: ${input.topic}`);
+
+    return this.generateLLMOptimizedContent(input);
+  }
+
+  /**
    * Generate content optimized for LLM consumption
    */
   async generateLLMOptimizedContent(input: LLMContentInput): Promise<LLMContentOutput> {
