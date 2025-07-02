@@ -1,0 +1,58 @@
+# Azure Key Vault Setup Script Template (PowerShell)
+# Copy this file to azure-keyvault-setup.ps1 and set your environment variables
+
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$KeyVaultName
+)
+
+# Ensure you have set these environment variables before running:
+# $env:AZURE_OPENAI_KEY = "your-azure-openai-key"
+# $env:AZURE_SEARCH_KEY = "your-azure-search-key"
+# $env:AZURE_COSMOS_KEY = "your-azure-cosmos-key"
+# $env:AZURE_LANGUAGE_KEY = "your-azure-language-key"
+# $env:AZURE_STORAGE_KEY = "your-azure-storage-key"
+# $env:AZURE_AI_FOUNDRY_KEY = "your-azure-ai-foundry-key"
+# $env:OPENAI_API_KEY = "your-openai-api-key"
+# $env:CLAUDE_API_KEY = "your-claude-api-key"
+# $env:ELEVENLABS_API_KEY = "your-elevenlabs-api-key"
+
+Write-Host "Setting up Azure Key Vault: $KeyVaultName" -ForegroundColor Green
+
+# Azure OpenAI Keys
+Write-Host "Adding Azure OpenAI secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-OPENAI-KEY" --value $env:AZURE_OPENAI_KEY
+
+# Azure Search Keys
+Write-Host "Adding Azure Search secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-SEARCH-KEY" --value $env:AZURE_SEARCH_KEY
+
+# Azure Cosmos DB Keys
+Write-Host "Adding Azure Cosmos DB secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-COSMOS-KEY" --value $env:AZURE_COSMOS_KEY
+
+# Azure Language Service Keys
+Write-Host "Adding Azure Language Service secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-LANGUAGE-KEY" --value $env:AZURE_LANGUAGE_KEY
+
+# Azure Storage Keys
+Write-Host "Adding Azure Storage secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-STORAGE-KEY" --value $env:AZURE_STORAGE_KEY
+
+# Azure AI Foundry Keys
+Write-Host "Adding Azure AI Foundry secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "AZURE-AI-FOUNDRY-KEY" --value $env:AZURE_AI_FOUNDRY_KEY
+
+# External API Keys
+Write-Host "Adding external API secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "OPENAI-API-KEY" --value $env:OPENAI_API_KEY
+az keyvault secret set --vault-name $KeyVaultName --name "CLAUDE-API-KEY" --value $env:CLAUDE_API_KEY
+az keyvault secret set --vault-name $KeyVaultName --name "ELEVENLABS-API-KEY" --value $env:ELEVENLABS_API_KEY
+
+# Additional API Keys
+Write-Host "Adding additional API secrets..." -ForegroundColor Yellow
+az keyvault secret set --vault-name $KeyVaultName --name "EXA-API-KEY" --value $env:EXA_API_KEY
+az keyvault secret set --vault-name $KeyVaultName --name "SOCIAL-SEARCHER-API-KEY" --value $env:SOCIAL_SEARCHER_API_KEY
+az keyvault secret set --vault-name $KeyVaultName --name "MEDIASTACK-API-KEY" --value $env:MEDIASTACK_API_KEY
+
+Write-Host "All secrets have been added to Azure Key Vault: $KeyVaultName" -ForegroundColor Green

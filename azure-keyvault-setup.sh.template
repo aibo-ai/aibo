@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Azure Key Vault Setup Script Template
+# Copy this file to azure-keyvault-setup.sh and set your environment variables
+
+# Set your Key Vault name
+KEY_VAULT_NAME="your-keyvault-name"
+
+# Ensure you have set these environment variables before running:
+# export AZURE_OPENAI_KEY="your-azure-openai-key"
+# export AZURE_SEARCH_KEY="your-azure-search-key"
+# export AZURE_COSMOS_KEY="your-azure-cosmos-key"
+# export AZURE_LANGUAGE_KEY="your-azure-language-key"
+# export AZURE_STORAGE_KEY="your-azure-storage-key"
+# export AZURE_AI_FOUNDRY_KEY="your-azure-ai-foundry-key"
+# export OPENAI_API_KEY="your-openai-api-key"
+# export CLAUDE_API_KEY="your-claude-api-key"
+# export ELEVENLABS_API_KEY="your-elevenlabs-api-key"
+
+# Azure OpenAI Keys
+echo "Adding Azure OpenAI secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-OPENAI-KEY" --value "$AZURE_OPENAI_KEY"
+
+# Azure Search Keys
+echo "Adding Azure Search secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-SEARCH-KEY" --value "$AZURE_SEARCH_KEY"
+
+# Azure Cosmos DB Keys
+echo "Adding Azure Cosmos DB secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-COSMOS-KEY" --value "$AZURE_COSMOS_KEY"
+
+# Azure Language Service Keys
+echo "Adding Azure Language Service secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-LANGUAGE-KEY" --value "$AZURE_LANGUAGE_KEY"
+
+# Azure Storage Keys
+echo "Adding Azure Storage secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-STORAGE-KEY" --value "$AZURE_STORAGE_KEY"
+
+# Azure AI Foundry Keys
+echo "Adding Azure AI Foundry secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-AI-FOUNDRY-KEY" --value "$AZURE_AI_FOUNDRY_KEY"
+
+# External API Keys
+echo "Adding external API secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "OPENAI-API-KEY" --value "$OPENAI_API_KEY"
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "CLAUDE-API-KEY" --value "$CLAUDE_API_KEY"
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "ELEVENLABS-API-KEY" --value "$ELEVENLABS_API_KEY"
+
+# Additional API Keys
+echo "Adding additional API secrets..."
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "EXA-API-KEY" --value "$EXA_API_KEY"
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "SOCIAL-SEARCHER-API-KEY" --value "$SOCIAL_SEARCHER_API_KEY"
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "MEDIASTACK-API-KEY" --value "$MEDIASTACK_API_KEY"
+
+echo "All secrets have been added to Azure Key Vault: $KEY_VAULT_NAME"
